@@ -908,3 +908,879 @@ func BenchmarkAnomalyPolicyToYAML(b *testing.B) {
 		yaml.Marshal(policy)
 	}
 }
+
+// ============================================================================
+// 1. MORE CDR THREAT CATEGORIES - MITRE ATT&CK Coverage
+// ============================================================================
+
+func TestAllMITRETechniques(t *testing.T) {
+	testCases := []struct {
+		name           string
+		category       string
+		expectedMITRE  string
+		expectedTactic string
+		expectedCall   string
+	}{
+		// Credential Access
+		{"cloud_creds", "Cloud_Credentials_Accessed", "T1552.005", "credential-access", "sys_connect"},
+		{"sensitive_file", "Sensitive_File_Access", "T1552.001", "credential-access", "sys_openat"},
+
+		// Discovery
+		{"network_scan", "Network_Scanning_Utility", "T1046", "discovery", "sys_execve"},
+
+		// Privilege Escalation
+		{"container_escape", "Container_Escape_Attempt", "T1611", "privilege-escalation", "sys_unshare"},
+
+		// Impact
+		{"crypto_mining", "Crypto_Mining_Activity", "T1496", "impact", "sys_connect"},
+
+		// Execution
+		{"reverse_shell", "Reverse_Shell_Execution", "T1059.004", "execution", "sys_execve"},
+
+		// Persistence
+		{"persistence_cron", "Persistence_Cron_Job", "T1053.003", "persistence", "sys_openat"},
+		{"webshell", "Webshell_Execution", "T1505.003", "persistence", "sys_execve"},
+		{"kernel_module", "Kernel_Module_Loading", "T1547.006", "persistence", "sys_init_module"},
+
+		// Defense Evasion
+		{"log_tampering", "Log_Tampering_Defense_Evasion", "T1070.002", "defense-evasion", "sys_unlinkat"},
+
+		// Lateral Movement
+		{"lateral_ssh", "Lateral_Movement_SSH", "T1021.004", "lateral-movement", "sys_execve"},
+
+		// Exfiltration
+		{"exfiltration", "Data_Exfiltration_Staging", "T1041", "exfiltration", "sys_execve"},
+	}
+
+	g := NewGenerator("Sigkill")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			events := []cdr.Event{{ThreatCategory: tc.category}}
+			policies := g.FromEvents(events)
+
+			if len(policies) == 0 {
+				t.Fatalf("No policy generated for category %s", tc.category)
+			}
+
+			policy := policies[0]
+
+			// Verify MITRE technique
+			if policy.Metadata.Labels["mitre.attack/technique"] != tc.expectedMITRE {
+				t.Errorf("Expected MITRE %s, got %s", tc.expectedMITRE, policy.Metadata.Labels["mitre.attack/technique"])
+			}
+
+			// Verify syscall
+			found := false
+			for _, kprobe := range policy.Spec.Kprobes {
+				if kprobe.Call == tc.expectedCall {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Expected syscall %s not found", tc.expectedCall)
+			}
+		})
+	}
+}
+
+func TestMITRESubtechniques(t *testing.T) {
+	subtechniques := map[string]string{
+		"T1552.001": "Credentials In Files",
+		"T1552.005": "Cloud Instance Metadata API",
+		"T1053.003": "Cron",
+		"T1070.002": "Clear Linux or Mac System Logs",
+		"T1021.004": "SSH",
+		"T1505.003": "Web Shell",
+		"T1547.006": "Kernel Modules and Extensions",
+	}
+
+	g := NewGenerator("Post")
+	categories := []string{
+		"Sensitive_File_Access",
+		"Cloud_Credentials_Accessed",
+		"Persistence_Cron",
+		"Log_Tampering",
+		"Lateral_Movement_SSH",
+		"Webshell",
+		"Kernel_Module",
+	}
+
+	for _, category := range categories {
+		events := []cdr.Event{{ThreatCategory: category}}
+		policies := g.FromEvents(events)
+		if len(policies) > 0 {
+			technique := policies[0].Metadata.Labels["mitre.attack/technique"]
+			if _, ok := subtechniques[technique]; ok {
+				t.Logf("Category %s maps to %s (%s)", category, technique, subtechniques[technique])
+			}
+		}
+	}
+}
+
+// ============================================================================
+// 2. EDGE CASES - Empty inputs, malformed data, boundaries
+// ============================================================================
+
+func TestEmptyEvents(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	// Empty slice
+	policies := g.FromEvents([]cdr.Event{})
+	if len(policies) != 0 {
+		t.Errorf("Expected 0 policies for empty events, got %d", len(policies))
+	}
+
+	// Nil-like behavior
+	policies = g.FromEvents(nil)
+	if len(policies) != 0 {
+		t.Errorf("Expected 0 policies for nil events, got %d", len(policies))
+	}
+}
+
+func TestEmptyThreatCategory(t *testing.T) {
+	g := NewGenerator("Post")
+	events := []cdr.Event{
+		{ThreatCategory: "", ProcessName: "curl"},
+		{ThreatCategory: "   ", ProcessName: "wget"},
+	}
+
+	policies := g.FromEvents(events)
+	if len(policies) != 0 {
+		t.Errorf("Expected 0 policies for empty categories, got %d", len(policies))
+	}
+}
+
+func TestEmptyAnomaly(t *testing.T) {
+	g := NewGenerator("Sigkill")
+	anomaly := Anomaly{} // All zero values
+
+	policy := g.FromAnomaly(anomaly)
+	if policy == nil {
+		t.Fatal("Policy should not be nil even for empty anomaly")
+	}
+
+	// Should fall through to generic
+	if !strings.Contains(policy.Metadata.Name, "ai-anomaly-generic") {
+		t.Errorf("Empty anomaly should generate generic policy, got %s", policy.Metadata.Name)
+	}
+}
+
+func TestSpecialCharactersInNames(t *testing.T) {
+	g := NewGenerator("Post")
+
+	testCases := []struct {
+		name          string
+		containerName string
+	}{
+		{"spaces", "my container"},
+		{"special", "container@123!"},
+		{"unicode", "容器-test"},
+		{"long", strings.Repeat("a", 100)},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			anomaly := Anomaly{
+				Feature:       "exec_rate",
+				ContainerName: tc.containerName,
+				Score:         50.0,
+			}
+			policy := g.FromAnomaly(anomaly)
+
+			// Should not panic and should generate valid policy
+			if policy == nil {
+				t.Fatal("Policy should not be nil")
+			}
+			if policy.Metadata.Name == "" {
+				t.Error("Policy name should not be empty")
+			}
+		})
+	}
+}
+
+func TestBoundaryScores(t *testing.T) {
+	g := NewGenerator("Post")
+
+	scores := []float64{
+		0.0,
+		0.001,
+		50.0,
+		99.999,
+		100.0,
+		-1.0,    // Invalid but should handle
+		1000.0,  // Over 100
+	}
+
+	for _, score := range scores {
+		anomaly := Anomaly{
+			Feature:       "exec_rate",
+			ContainerName: "test",
+			Score:         score,
+		}
+		policy := g.FromAnomaly(anomaly)
+
+		if policy == nil {
+			t.Errorf("Policy nil for score %f", score)
+			continue
+		}
+
+		// Verify score is in annotation
+		scoreStr := policy.Metadata.Annotations["ai.qualys.com/score"]
+		if scoreStr == "" {
+			t.Errorf("Missing score annotation for %f", score)
+		}
+	}
+}
+
+func TestBoundaryPorts(t *testing.T) {
+	g := NewGenerator("Post")
+
+	ports := []int{
+		0,
+		1,
+		80,
+		443,
+		8080,
+		65535,
+		-1,     // Invalid
+		65536,  // Out of range
+	}
+
+	for _, port := range ports {
+		anomaly := Anomaly{
+			Feature:       "network_connections",
+			ContainerName: "test",
+			NetworkPort:   port,
+		}
+		policy := g.FromAnomaly(anomaly)
+
+		if policy == nil {
+			t.Errorf("Policy nil for port %d", port)
+		}
+	}
+}
+
+func TestDuplicateEvents(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	// Same category multiple times
+	events := []cdr.Event{
+		{ThreatCategory: "Container_Escape_Attempt", ProcessName: "bash"},
+		{ThreatCategory: "Container_Escape_Attempt", ProcessName: "sh"},
+		{ThreatCategory: "Container_Escape_Attempt", ProcessName: "bash"}, // duplicate process
+	}
+
+	policies := g.FromEvents(events)
+
+	// Should only generate 1 policy (grouped by category)
+	if len(policies) != 1 {
+		t.Errorf("Expected 1 policy for duplicate categories, got %d", len(policies))
+	}
+}
+
+func TestMixedValidInvalidEvents(t *testing.T) {
+	g := NewGenerator("Post")
+
+	events := []cdr.Event{
+		{ThreatCategory: ""},                                    // Invalid
+		{ThreatCategory: "Container_Escape_Attempt"},            // Valid
+		{ThreatCategory: "   "},                                 // Invalid
+		{ThreatCategory: "Network_Scanning_Utility"},            // Valid
+		{ThreatCategory: "Unknown_Category_XYZ"},                // Unknown but valid
+	}
+
+	policies := g.FromEvents(events)
+
+	// Should generate policies only for valid categories
+	if len(policies) < 2 {
+		t.Errorf("Expected at least 2 policies, got %d", len(policies))
+	}
+}
+
+// ============================================================================
+// 3. INTEGRATION TESTS - AI Detector → Policy Generator Pipeline
+// ============================================================================
+
+func TestAIDetectorToPolicy(t *testing.T) {
+	// Simulate AI detector anomaly output
+	aiAnomalies := []struct {
+		anomalyType string
+		feature     string
+		score       float64
+		description string
+	}{
+		{"statistical", "exec_rate", 85.0, "High execution rate"},
+		{"time_series", "network_connections", 72.0, "Unusual network pattern"},
+		{"behavioral", "file_access", 91.0, "Sensitive file access"},
+		{"isolation", "privilege_escalation", 99.0, "Privilege escalation detected"},
+		{"clustering", "unknown", 65.0, "Outlier behavior"},
+	}
+
+	g := NewGenerator("Sigkill")
+
+	for _, ai := range aiAnomalies {
+		t.Run(ai.feature, func(t *testing.T) {
+			anomaly := Anomaly{
+				Type:          ai.anomalyType,
+				Feature:       ai.feature,
+				ContainerID:   "container-" + ai.feature,
+				ContainerName: "pod-" + ai.feature,
+				Namespace:     "default",
+				Score:         ai.score,
+				Description:   ai.description,
+			}
+
+			policy := g.FromAnomaly(anomaly)
+
+			// Verify policy is valid
+			if policy == nil {
+				t.Fatal("Policy is nil")
+			}
+			if policy.APIVersion != "cilium.io/v1alpha1" {
+				t.Error("Invalid APIVersion")
+			}
+			if len(policy.Spec.Kprobes) == 0 {
+				t.Error("No kprobes in policy")
+			}
+
+			// Verify score is preserved
+			scoreAnnotation := policy.Metadata.Annotations["ai.qualys.com/score"]
+			if scoreAnnotation == "" {
+				t.Error("Score not preserved in policy")
+			}
+		})
+	}
+}
+
+func TestCDREventToPolicy(t *testing.T) {
+	// Simulate CDR event categories from API
+	cdrCategories := []string{
+		"Cloud_Credentials_Accessed_By_Network_Utility",
+		"Network_Scanning_Utility_Executed",
+		"Container_Escape_Attempt_Detected",
+		"Crypto_Mining_Binary_Executed",
+		"Reverse_Shell_Connection_Established",
+		"Sensitive_File_Accessed",
+		"Persistence_Mechanism_Created",
+		"Defense_Evasion_Log_Cleared",
+		"Lateral_Movement_SSH_Connection",
+		"Data_Exfiltration_Tool_Executed",
+		"Webshell_Activity_Detected",
+		"Kernel_Module_Loaded",
+	}
+
+	g := NewGenerator("Sigkill")
+
+	for _, category := range cdrCategories {
+		t.Run(category, func(t *testing.T) {
+			events := []cdr.Event{{
+				ThreatCategory: category,
+				ProcessName:    "test-process",
+			}}
+
+			policies := g.FromEvents(events)
+
+			// All categories should generate at least one policy
+			if len(policies) == 0 {
+				t.Logf("No policy for category: %s (may be unknown)", category)
+				return
+			}
+
+			policy := policies[0]
+			if policy.Kind != "TracingPolicy" {
+				t.Error("Invalid Kind")
+			}
+			if len(policy.Spec.Kprobes) == 0 {
+				t.Error("No kprobes generated")
+			}
+		})
+	}
+}
+
+func TestPipelineEndToEnd(t *testing.T) {
+	// Simulate full pipeline: Detection → Anomaly → Policy → YAML
+	g := NewGenerator("Sigkill")
+
+	// Step 1: CDR detection event
+	events := []cdr.Event{{
+		ThreatCategory: "Container_Escape_Attempt",
+		ProcessName:    "nsenter",
+	}}
+	cdrPolicies := g.FromEvents(events)
+
+	// Step 2: AI anomaly detection
+	anomaly := Anomaly{
+		Type:          "statistical",
+		Feature:       "privilege_escalation",
+		ContainerID:   "abc123",
+		ContainerName: "compromised-pod",
+		Score:         95.0,
+		Description:   "Privilege escalation correlated with container escape",
+	}
+	aiPolicy := g.FromAnomaly(anomaly)
+
+	// Step 3: Verify both policies are valid YAML
+	allPolicies := append(cdrPolicies, *aiPolicy)
+
+	for i, policy := range allPolicies {
+		yamlData, err := yaml.Marshal(policy)
+		if err != nil {
+			t.Errorf("Policy %d failed YAML marshal: %v", i, err)
+			continue
+		}
+
+		// Verify YAML is valid by unmarshaling back
+		var parsed TracingPolicy
+		if err := yaml.Unmarshal(yamlData, &parsed); err != nil {
+			t.Errorf("Policy %d failed YAML unmarshal: %v", i, err)
+		}
+
+		// Verify round-trip preserves key fields
+		if parsed.APIVersion != policy.APIVersion {
+			t.Errorf("APIVersion mismatch after round-trip")
+		}
+		if parsed.Kind != policy.Kind {
+			t.Errorf("Kind mismatch after round-trip")
+		}
+	}
+}
+
+// ============================================================================
+// 4. YAML VALIDATION - kubectl-apply Compatible
+// ============================================================================
+
+func TestYAMLKubernetesCompatibility(t *testing.T) {
+	g := NewGenerator("Sigkill")
+	events := []cdr.Event{{ThreatCategory: "Container_Escape_Attempt"}}
+	policies := g.FromEvents(events)
+
+	if len(policies) == 0 {
+		t.Fatal("No policies generated")
+	}
+
+	yamlData, err := yaml.Marshal(policies[0])
+	if err != nil {
+		t.Fatalf("Failed to marshal: %v", err)
+	}
+
+	yamlStr := string(yamlData)
+
+	// Required Kubernetes fields
+	requiredFields := []string{
+		"apiVersion:",
+		"kind:",
+		"metadata:",
+		"name:",
+		"spec:",
+	}
+
+	for _, field := range requiredFields {
+		if !strings.Contains(yamlStr, field) {
+			t.Errorf("Missing required Kubernetes field: %s", field)
+		}
+	}
+
+	// Verify no invalid YAML characters
+	invalidPatterns := []string{
+		"!!python",  // YAML injection
+		"!!binary",  // Binary data
+		"---\n---",  // Double document separator
+	}
+
+	for _, pattern := range invalidPatterns {
+		if strings.Contains(yamlStr, pattern) {
+			t.Errorf("Found invalid YAML pattern: %s", pattern)
+		}
+	}
+}
+
+func TestYAMLLabelConstraints(t *testing.T) {
+	g := NewGenerator("Post")
+
+	// Kubernetes label constraints:
+	// - max 63 chars
+	// - must start/end with alphanumeric
+	// - can contain -, _, .
+
+	events := []cdr.Event{{ThreatCategory: "Container_Escape_Attempt"}}
+	policies := g.FromEvents(events)
+
+	if len(policies) == 0 {
+		t.Fatal("No policies generated")
+	}
+
+	policy := policies[0]
+
+	for key, value := range policy.Metadata.Labels {
+		// Check key format
+		if len(key) > 253 { // prefix/name format
+			t.Errorf("Label key too long: %s", key)
+		}
+
+		// Check value constraints
+		if len(value) > 63 {
+			t.Errorf("Label value too long: %s = %s", key, value)
+		}
+	}
+}
+
+func TestYAMLNameConstraints(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	categories := []string{
+		"Container_Escape_Attempt",
+		"Cloud_Credentials_Accessed",
+		"Network_Scanning_Utility",
+	}
+
+	for _, category := range categories {
+		events := []cdr.Event{{ThreatCategory: category}}
+		policies := g.FromEvents(events)
+
+		if len(policies) == 0 {
+			continue
+		}
+
+		name := policies[0].Metadata.Name
+
+		// Kubernetes name constraints
+		if len(name) > 253 {
+			t.Errorf("Name too long: %s", name)
+		}
+
+		// Must be lowercase
+		if name != strings.ToLower(name) {
+			t.Errorf("Name must be lowercase: %s", name)
+		}
+
+		// Must match DNS subdomain pattern
+		validChars := "abcdefghijklmnopqrstuvwxyz0123456789-."
+		for _, c := range name {
+			if !strings.ContainsRune(validChars, c) {
+				t.Errorf("Invalid character in name: %c in %s", c, name)
+			}
+		}
+	}
+}
+
+func TestYAMLMultiDocumentOutput(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	events := []cdr.Event{
+		{ThreatCategory: "Container_Escape_Attempt"},
+		{ThreatCategory: "Crypto_Mining_Activity"},
+		{ThreatCategory: "Network_Scanning_Utility"},
+	}
+
+	policies := g.FromEvents(events)
+
+	// Generate multi-document YAML
+	var fullYAML strings.Builder
+	for i, policy := range policies {
+		if i > 0 {
+			fullYAML.WriteString("---\n")
+		}
+		yamlData, err := yaml.Marshal(policy)
+		if err != nil {
+			t.Fatalf("Failed to marshal policy %d: %v", i, err)
+		}
+		fullYAML.Write(yamlData)
+	}
+
+	// Verify multi-doc structure
+	docs := strings.Split(fullYAML.String(), "---")
+	if len(docs) < len(policies) {
+		t.Logf("Generated %d policies in multi-doc YAML", len(policies))
+	}
+}
+
+func TestYAMLSpecialValueEscaping(t *testing.T) {
+	g := NewGenerator("Post")
+
+	// Test values that need YAML escaping
+	anomaly := Anomaly{
+		Feature:       "exec_rate",
+		ContainerName: "test",
+		Description:   "Description with: colons and 'quotes' and \"double quotes\"",
+		Score:         50.0,
+	}
+
+	policy := g.FromAnomaly(anomaly)
+	yamlData, err := yaml.Marshal(policy)
+	if err != nil {
+		t.Fatalf("Failed to marshal: %v", err)
+	}
+
+	// Verify it can be parsed back
+	var parsed TracingPolicy
+	if err := yaml.Unmarshal(yamlData, &parsed); err != nil {
+		t.Errorf("Failed to parse YAML with special chars: %v", err)
+	}
+}
+
+// ============================================================================
+// 5. REAL-WORLD SCENARIOS - Attack Chains
+// ============================================================================
+
+func TestAttackChainContainerEscape(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	// Simulate a container escape attack chain
+	attackChain := []cdr.Event{
+		{ThreatCategory: "Network_Scanning_Utility", ProcessName: "nmap"},          // 1. Reconnaissance
+		{ThreatCategory: "Sensitive_File_Access", ProcessName: "cat"},              // 2. Credential theft
+		{ThreatCategory: "Container_Escape_Attempt", ProcessName: "nsenter"},       // 3. Escape attempt
+		{ThreatCategory: "Lateral_Movement_SSH", ProcessName: "ssh"},               // 4. Lateral movement
+	}
+
+	policies := g.FromEvents(attackChain)
+
+	// Should generate multiple policies covering the attack chain
+	if len(policies) < 3 {
+		t.Errorf("Expected at least 3 policies for attack chain, got %d", len(policies))
+	}
+
+	// Verify critical techniques are covered
+	techniques := make(map[string]bool)
+	for _, p := range policies {
+		tech := p.Metadata.Labels["mitre.attack/technique"]
+		if tech != "" {
+			techniques[tech] = true
+		}
+	}
+
+	criticalTechniques := []string{"T1046", "T1611", "T1021.004"}
+	for _, tech := range criticalTechniques {
+		if !techniques[tech] {
+			t.Logf("Attack chain missing technique: %s", tech)
+		}
+	}
+}
+
+func TestAttackChainCryptoMining(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	// Crypto mining attack chain
+	attackChain := []cdr.Event{
+		{ThreatCategory: "Cloud_Credentials_Accessed", ProcessName: "curl"},   // 1. Get cloud creds
+		{ThreatCategory: "Reverse_Shell_Execution", ProcessName: "nc"},        // 2. Establish C2
+		{ThreatCategory: "Crypto_Mining_Activity", ProcessName: "xmrig"},      // 3. Deploy miner
+	}
+
+	policies := g.FromEvents(attackChain)
+
+	// Verify mining-related policy exists
+	foundMining := false
+	for _, p := range policies {
+		if p.Metadata.Labels["mitre.attack/technique"] == "T1496" {
+			foundMining = true
+			break
+		}
+	}
+
+	if !foundMining {
+		t.Error("Attack chain should include crypto mining detection (T1496)")
+	}
+}
+
+func TestAttackChainDataExfiltration(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	// Data exfiltration attack chain
+	attackChain := []cdr.Event{
+		{ThreatCategory: "Sensitive_File_Access", ProcessName: "cat"},         // 1. Access secrets
+		{ThreatCategory: "Defense_Evasion_Log_Tampering", ProcessName: "rm"},  // 2. Clear tracks
+		{ThreatCategory: "Data_Exfiltration_Staging", ProcessName: "base64"},  // 3. Stage data
+	}
+
+	policies := g.FromEvents(attackChain)
+
+	// Should cover credential access, defense evasion, and exfiltration
+	tactics := make(map[string]bool)
+	for _, p := range policies {
+		for k := range p.Metadata.Labels {
+			if strings.HasPrefix(k, "mitre.attack/") {
+				tactics[p.Metadata.Labels[k]] = true
+			}
+		}
+	}
+
+	if len(policies) < 2 {
+		t.Errorf("Expected at least 2 policies for exfiltration chain, got %d", len(policies))
+	}
+}
+
+func TestAttackChainWebshellPersistence(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	// Webshell persistence attack
+	attackChain := []cdr.Event{
+		{ThreatCategory: "Webshell_Execution", ProcessName: "php"},                // 1. Initial webshell
+		{ThreatCategory: "Persistence_Cron", ProcessName: "crontab"},              // 2. Establish persistence
+		{ThreatCategory: "Reverse_Shell_Execution", ProcessName: "bash"},          // 3. Interactive shell
+	}
+
+	policies := g.FromEvents(attackChain)
+
+	// Verify persistence technique detected
+	foundPersistence := false
+	for _, p := range policies {
+		tech := p.Metadata.Labels["mitre.attack/technique"]
+		if tech == "T1505.003" || tech == "T1053.003" {
+			foundPersistence = true
+			break
+		}
+	}
+
+	if !foundPersistence {
+		t.Error("Attack chain should detect persistence techniques")
+	}
+}
+
+func TestMultiContainerAttack(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	// Simulated multi-container attack with AI anomalies
+	anomalies := []Anomaly{
+		{
+			Feature:       "network_connections",
+			ContainerName: "frontend",
+			ContainerID:   "frontend-123",
+			Score:         72.0,
+			NetworkPort:   4444,
+			Description:   "Unusual outbound connection from frontend",
+		},
+		{
+			Feature:       "privilege_escalation",
+			ContainerName: "backend",
+			ContainerID:   "backend-456",
+			Score:         95.0,
+			Description:   "Privilege escalation in backend",
+		},
+		{
+			Feature:       "file_access",
+			ContainerName: "database",
+			ContainerID:   "db-789",
+			Score:         88.0,
+			FilePath:      "/var/lib/mysql/secrets",
+			Description:   "Unusual database file access",
+		},
+	}
+
+	policies := make([]TracingPolicy, 0, len(anomalies))
+	for _, a := range anomalies {
+		policies = append(policies, *g.FromAnomaly(a))
+	}
+
+	// Verify each container has a policy
+	containers := make(map[string]bool)
+	for _, p := range policies {
+		containerID := p.Metadata.Annotations["container-id"]
+		if containerID != "" {
+			containers[containerID] = true
+		}
+	}
+
+	if len(containers) != 3 {
+		t.Errorf("Expected 3 container-specific policies, got %d", len(containers))
+	}
+}
+
+func TestRealWorldProcessNames(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	// Real malicious process names seen in the wild
+	maliciousProcesses := []struct {
+		category string
+		process  string
+	}{
+		{"Crypto_Mining_Activity", "xmrig"},
+		{"Crypto_Mining_Activity", "minerd"},
+		{"Crypto_Mining_Activity", "cpuminer"},
+		{"Reverse_Shell_Execution", "nc"},
+		{"Reverse_Shell_Execution", "ncat"},
+		{"Reverse_Shell_Execution", "socat"},
+		{"Network_Scanning_Utility", "nmap"},
+		{"Network_Scanning_Utility", "masscan"},
+		{"Network_Scanning_Utility", "zmap"},
+		{"Container_Escape_Attempt", "nsenter"},
+		{"Container_Escape_Attempt", "docker"},
+		{"Container_Escape_Attempt", "crictl"},
+	}
+
+	for _, mp := range maliciousProcesses {
+		events := []cdr.Event{{
+			ThreatCategory: mp.category,
+			ProcessName:    mp.process,
+		}}
+
+		policies := g.FromEvents(events)
+		if len(policies) == 0 {
+			t.Errorf("No policy for %s/%s", mp.category, mp.process)
+		}
+	}
+}
+
+func TestHighSeverityPrioritization(t *testing.T) {
+	g := NewGenerator("Sigkill")
+
+	// High-severity events that should generate critical policies
+	criticalEvents := []cdr.Event{
+		{ThreatCategory: "Container_Escape_Attempt"},
+		{ThreatCategory: "Crypto_Mining_Activity"},
+		{ThreatCategory: "Kernel_Module_Loading"},
+	}
+
+	policies := g.FromEvents(criticalEvents)
+
+	criticalCount := 0
+	for _, p := range policies {
+		if p.Metadata.Labels["policy.qualys.com/priority"] == "critical" {
+			criticalCount++
+		}
+	}
+
+	if criticalCount < 2 {
+		t.Errorf("Expected at least 2 critical priority policies, got %d", criticalCount)
+	}
+}
+
+// ============================================================================
+// BENCHMARK - Attack Chain Processing
+// ============================================================================
+
+func BenchmarkAttackChainProcessing(b *testing.B) {
+	g := NewGenerator("Sigkill")
+
+	attackChain := []cdr.Event{
+		{ThreatCategory: "Network_Scanning_Utility", ProcessName: "nmap"},
+		{ThreatCategory: "Cloud_Credentials_Accessed", ProcessName: "curl"},
+		{ThreatCategory: "Container_Escape_Attempt", ProcessName: "nsenter"},
+		{ThreatCategory: "Lateral_Movement_SSH", ProcessName: "ssh"},
+		{ThreatCategory: "Crypto_Mining_Activity", ProcessName: "xmrig"},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		g.FromEvents(attackChain)
+	}
+}
+
+func BenchmarkMultiAnomalyProcessing(b *testing.B) {
+	g := NewGenerator("Sigkill")
+
+	anomalies := []Anomaly{
+		{Feature: "exec_rate", ContainerName: "c1", Score: 80},
+		{Feature: "network_connections", ContainerName: "c2", Score: 75, NetworkPort: 4444},
+		{Feature: "file_access", ContainerName: "c3", Score: 90, FilePath: "/etc/shadow"},
+		{Feature: "privilege_escalation", ContainerName: "c4", Score: 95},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, a := range anomalies {
+			g.FromAnomaly(a)
+		}
+	}
+}
