@@ -184,7 +184,7 @@ def generate_fim_policies(generator: PolicyGenerator) -> List[FimPolicy]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate Tetragon TracingPolicy and Qualys FimPolicy CRDs"
+        description="Generate Qualys TracingPolicy and FimPolicy CRDs"
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")

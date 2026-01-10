@@ -300,8 +300,8 @@ class ThreatIntelManager:
 
         return stats
 
-    def generate_cilium_policy(self, name: str = "threat-intel-blocklist") -> Dict:
-        """Generate CiliumNetworkPolicy from IOCs."""
+    def generate_network_policy(self, name: str = "threat-intel-blocklist") -> Dict:
+        """Generate Qualys NetworkPolicy from IOCs."""
         # Convert IPs to CIDRs
         cidrs = []
         for ip in self.iocs["ip"]:
@@ -347,8 +347,8 @@ class ThreatIntelManager:
 
         return policy
 
-    def generate_tetragon_policy(self, name: str = "block-threat-intel-connections") -> Dict:
-        """Generate TracingPolicy for blocking IOC connections."""
+    def generate_tracing_policy(self, name: str = "block-threat-intel-connections") -> Dict:
+        """Generate Qualys TracingPolicy for blocking IOC connections."""
         # Extract ports from URLs if any
         suspicious_ports = set()
         for url in self.iocs["url"]:
@@ -400,23 +400,21 @@ class ThreatIntelManager:
         """Save generated policies to files."""
         os.makedirs(output_dir, exist_ok=True)
 
-        # Save Cilium policy
-        cilium_policy = self.generate_cilium_policy()
-        with open(os.path.join(output_dir, "cilium-threat-intel-blocklist.yaml"), "w") as f:
-            yaml.dump(cilium_policy, f, default_flow_style=False, sort_keys=False)
+        network_policy = self.generate_network_policy()
+        with open(os.path.join(output_dir, "qualys-network-blocklist.yaml"), "w") as f:
+            yaml.dump(network_policy, f, default_flow_style=False, sort_keys=False)
 
-        # Save Tetragon policy
-        tetragon_policy = self.generate_tetragon_policy()
-        with open(os.path.join(output_dir, "tetragon-threat-intel-block.yaml"), "w") as f:
-            yaml.dump(tetragon_policy, f, default_flow_style=False, sort_keys=False)
+        tracing_policy = self.generate_tracing_policy()
+        with open(os.path.join(output_dir, "qualys-tracing-blocklist.yaml"), "w") as f:
+            yaml.dump(tracing_policy, f, default_flow_style=False, sort_keys=False)
 
         # Save raw IOCs for reference
         with open(os.path.join(output_dir, "iocs.json"), "w") as f:
             json.dump({k: list(v) for k, v in self.iocs.items()}, f, indent=2)
 
         return {
-            "cilium_policy": os.path.join(output_dir, "cilium-threat-intel-blocklist.yaml"),
-            "tetragon_policy": os.path.join(output_dir, "tetragon-threat-intel-block.yaml"),
+            "network_policy": os.path.join(output_dir, "qualys-network-blocklist.yaml"),
+            "tracing_policy": os.path.join(output_dir, "qualys-tracing-blocklist.yaml"),
             "iocs_file": os.path.join(output_dir, "iocs.json"),
         }
 

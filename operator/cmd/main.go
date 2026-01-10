@@ -168,21 +168,19 @@ func runOnce(ctx context.Context, client *cdr.Client, repChecker *reputation.Rep
 			stats["ips"], stats["domains"], stats["ports"])
 
 		if stats["ips"] > 0 || stats["ports"] > 0 {
-			// Generate Tetragon policy for extracted IOCs
-			tetragonPolicy := blocklist.GenerateTetragonPolicy(
+			tracingPolicy := blocklist.GenerateTracingPolicy(
 				fmt.Sprintf("cdr-dynamic-blocklist-%s", time.Now().Format("20060102")),
 				cfg.Action,
 			)
-			if err := writePolicy(cfg.OutputDir, "cdr-dynamic-blocklist", tetragonPolicy); err != nil {
+			if err := writePolicy(cfg.OutputDir, "cdr-dynamic-blocklist", tracingPolicy); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 			}
 
-			// Generate Cilium network policy
-			ciliumPolicy := blocklist.GenerateCiliumPolicy(
+			networkPolicy := blocklist.GenerateNetworkPolicy(
 				"cdr-network-blocklist",
 				"default",
 			)
-			if err := writePolicy(cfg.OutputDir, "cilium-cdr-blocklist", ciliumPolicy); err != nil {
+			if err := writePolicy(cfg.OutputDir, "cdr-network-blocklist", networkPolicy); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 			}
 		}

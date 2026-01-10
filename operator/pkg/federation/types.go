@@ -208,7 +208,7 @@ type FederatedTracingPolicyList struct {
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// FederatedNetworkPolicy represents a CiliumNetworkPolicy distributed across clusters.
+// FederatedNetworkPolicy represents a Qualys NetworkPolicy distributed across clusters.
 type FederatedNetworkPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -219,7 +219,7 @@ type FederatedNetworkPolicy struct {
 
 // FederatedNetworkPolicySpec defines the desired state.
 type FederatedNetworkPolicySpec struct {
-	// Template contains the CiliumNetworkPolicy spec.
+	// Template contains the Qualys NetworkPolicy spec.
 	Template NetworkPolicyTemplate `json:"template"`
 
 	// Placement determines which clusters receive this policy.
@@ -236,7 +236,7 @@ type NetworkPolicyTemplate struct {
 	// +optional
 	Metadata metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// Spec is the CiliumNetworkPolicy spec.
+	// Spec is the Qualys NetworkPolicy spec.
 	Spec map[string]interface{} `json:"spec"`
 }
 

@@ -144,7 +144,7 @@ func (s *ServerV2) Start(ctx context.Context) error {
 
 	// CDR webhook endpoints
 	mux.HandleFunc("/webhook/cdr", s.handleCDRWebhook)
-	mux.HandleFunc("/webhook/tetragon", s.handleTetragonWebhook)
+	mux.HandleFunc("/webhook/tracingpolicy", s.handleTracingPolicyWebhook)
 
 	// API endpoints
 	mux.HandleFunc("/api/block", s.handleManualBlock)
@@ -182,8 +182,8 @@ func (s *ServerV2) Start(ctx context.Context) error {
 
 	fmt.Printf("Enhanced Webhook Server v2 starting on %s\n", s.addr)
 	fmt.Printf("Endpoints:\n")
-	fmt.Printf("  POST /webhook/cdr         - Qualys CDR webhook\n")
-	fmt.Printf("  POST /webhook/tetragon    - Tetragon events webhook\n")
+	fmt.Printf("  POST /webhook/cdr             - Qualys CDR webhook\n")
+	fmt.Printf("  POST /webhook/tracingpolicy   - Qualys TracingPolicy events webhook\n")
 	fmt.Printf("  POST /api/block           - Manual blocking API\n")
 	fmt.Printf("  POST /api/respond         - Execute response action\n")
 	fmt.Printf("  POST /api/drift/register  - Register container for drift detection\n")
@@ -319,13 +319,13 @@ func (s *ServerV2) processEnhancedEvent(ctx context.Context, event WebhookEvent)
 	s.createBlockingPolicy(event)
 }
 
-func (s *ServerV2) handleTetragonWebhook(w http.ResponseWriter, r *http.Request) {
+func (s *ServerV2) handleTracingPolicyWebhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var tetragonEvent struct {
+	var policyEvent struct {
 		ProcessKprobe struct {
 			Process struct {
 				Binary    string `json:"binary"`
@@ -341,13 +341,12 @@ func (s *ServerV2) handleTetragonWebhook(w http.ResponseWriter, r *http.Request)
 		Time string `json:"time"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&tetragonEvent); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&policyEvent); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	// Process Tetragon event
-	proc := tetragonEvent.ProcessKprobe.Process
+	proc := policyEvent.ProcessKprobe.Process
 	containerID := proc.Docker
 
 	// Check for drift
@@ -360,7 +359,7 @@ func (s *ServerV2) handleTetragonWebhook(w http.ResponseWriter, r *http.Request)
 
 	if driftEvent != nil {
 		secEvent := &outputs.SecurityEvent{
-			EventID:        fmt.Sprintf("tetragon-%d", time.Now().UnixNano()),
+			EventID:        fmt.Sprintf("tracingpolicy-%d", time.Now().UnixNano()),
 			Timestamp:      time.Now(),
 			Category:       "drift_detected",
 			Severity:       "critical",

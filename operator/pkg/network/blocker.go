@@ -152,8 +152,8 @@ func (b *NetworkBlocklist) addDomain(domain, severity, category, source string, 
 	}
 }
 
-// GenerateCiliumPolicy creates a CiliumNetworkPolicy from the blocklist.
-func (b *NetworkBlocklist) GenerateCiliumPolicy(name, namespace string) map[string]interface{} {
+// GenerateNetworkPolicy creates a Qualys NetworkPolicy from the blocklist.
+func (b *NetworkBlocklist) GenerateNetworkPolicy(name, namespace string) map[string]interface{} {
 	// Collect IPs for CIDR deny rules
 	var denyIPs []string
 	for ip := range b.IPs {
@@ -232,8 +232,8 @@ func (b *NetworkBlocklist) GenerateCiliumPolicy(name, namespace string) map[stri
 	return policy
 }
 
-// GenerateTetragonPolicy creates a TracingPolicy for network blocking.
-func (b *NetworkBlocklist) GenerateTetragonPolicy(name string, action string) map[string]interface{} {
+// GenerateTracingPolicy creates a Qualys TracingPolicy for network blocking.
+func (b *NetworkBlocklist) GenerateTracingPolicy(name string, action string) map[string]interface{} {
 	var ipValues []string
 	for ip := range b.IPs {
 		ipValues = append(ipValues, ip)

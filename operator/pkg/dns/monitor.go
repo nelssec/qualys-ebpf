@@ -284,7 +284,7 @@ func (m *DNSMonitor) Stats() map[string]interface{} {
 // GenerateBlockingPolicy generates a TracingPolicy for DNS blocking.
 func (m *DNSMonitor) GenerateBlockingPolicy(domains []string) map[string]interface{} {
 	// Generate a TracingPolicy that blocks DNS queries to specific domains
-	// This uses Tetragon's ability to hook into DNS-related syscalls
+	// This uses Qualys CRS's ability to hook into DNS-related syscalls via eBPF
 
 	return map[string]interface{}{
 		"apiVersion": "cilium.io/v1alpha1",
@@ -324,8 +324,8 @@ func (m *DNSMonitor) GenerateBlockingPolicy(domains []string) map[string]interfa
 	}
 }
 
-// GenerateCiliumDNSPolicy generates a CiliumNetworkPolicy for DNS blocking.
-func (m *DNSMonitor) GenerateCiliumDNSPolicy(blockedDomains []string) map[string]interface{} {
+// GenerateNetworkDNSPolicy generates a Qualys NetworkPolicy for DNS blocking.
+func (m *DNSMonitor) GenerateNetworkDNSPolicy(blockedDomains []string) map[string]interface{} {
 	fqdnRules := make([]map[string]interface{}, 0)
 	for _, domain := range blockedDomains {
 		fqdnRules = append(fqdnRules, map[string]interface{}{

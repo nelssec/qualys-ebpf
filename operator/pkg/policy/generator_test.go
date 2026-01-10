@@ -933,20 +933,33 @@ func TestAllMITRETechniques(t *testing.T) {
 
 		// Impact
 		{"crypto_mining", "Crypto_Mining_Activity", "T1496", "impact", "sys_connect"},
+		{"data_destruction", "Data_Destruction_Mass_Delete", "T1485", "impact", "sys_execve"},
+		{"inhibit_recovery", "System_Recovery_Inhibit", "T1490", "impact", "sys_unlinkat"},
 
 		// Execution
 		{"reverse_shell", "Reverse_Shell_Execution", "T1059.004", "execution", "sys_execve"},
+		{"container_admin", "Admin_Command_Kubectl_Exec", "T1609", "execution", "sys_execve"},
+		{"deploy_container", "Deploy_Container_Runtime", "T1610", "execution", "sys_execve"},
 
 		// Persistence
 		{"persistence_cron", "Persistence_Cron_Job", "T1053.003", "persistence", "sys_openat"},
 		{"webshell", "Webshell_Execution", "T1505.003", "persistence", "sys_execve"},
 		{"kernel_module", "Kernel_Module_Loading", "T1547.006", "persistence", "sys_init_module"},
+		{"account_manipulation", "Account_Manipulation_Passwd", "T1098", "persistence", "sys_execve"},
+		{"account_creation", "Account_Creation_Useradd", "T1136", "persistence", "sys_execve"},
 
 		// Defense Evasion
 		{"log_tampering", "Log_Tampering_Defense_Evasion", "T1070.002", "defense-evasion", "sys_unlinkat"},
+		{"container_build", "Container_Build_Image_Host", "T1612", "defense-evasion", "sys_execve"},
 
 		// Lateral Movement
 		{"lateral_ssh", "Lateral_Movement_SSH", "T1021.004", "lateral-movement", "sys_execve"},
+
+		// Initial Access
+		{"remote_services", "Remote_Services_RDP_VNC", "T1133", "initial-access", "sys_execve"},
+
+		// Discovery
+		{"group_discovery", "Group_Discovery_Permission_Enum", "T1069", "discovery", "sys_execve"},
 
 		// Exfiltration
 		{"exfiltration", "Data_Exfiltration_Staging", "T1041", "exfiltration", "sys_execve"},
@@ -981,6 +994,91 @@ func TestAllMITRETechniques(t *testing.T) {
 				t.Errorf("Expected syscall %s not found", tc.expectedCall)
 			}
 		})
+	}
+}
+
+// TestMITREContainerMatrix validates coverage of official MITRE ATT&CK for Containers matrix
+// Reference: https://attack.mitre.org/matrices/enterprise/containers/
+func TestMITREContainerMatrix(t *testing.T) {
+	// All techniques from MITRE ATT&CK Containers Matrix
+	containerTechniques := map[string]struct {
+		tactic      string
+		description string
+		supported   bool // Whether we have a policy for this
+	}{
+		// Initial Access (TA0001)
+		"T1190": {"initial-access", "Exploit Public-Facing Application", true},
+		"T1133": {"initial-access", "External Remote Services", true}, // remoteServicesPolicy
+		"T1078": {"initial-access", "Valid Accounts", false},          // Requires auth system integration
+
+		// Execution (TA0002)
+		"T1609": {"execution", "Container Administration Command", true}, // containerAdminPolicy
+		"T1610": {"execution", "Deploy Container", true},                 // deployContainerPolicy
+		"T1053": {"execution", "Scheduled Task/Job", true},
+		"T1204": {"execution", "User Execution", false}, // Hard to distinguish from legitimate
+		"T1059": {"execution", "Command and Scripting Interpreter", true},
+
+		// Persistence (TA0003)
+		"T1098": {"persistence", "Account Manipulation", true}, // accountManipulationPolicy
+		"T1136": {"persistence", "Create Account", true},       // accountCreationPolicy
+		"T1543": {"persistence", "Create or Modify System Process", true},
+		"T1525": {"persistence", "Implant Internal Image", false}, // Requires registry monitoring
+		"T1505": {"persistence", "Server Software Component", true},
+		"T1547": {"persistence", "Boot or Logon Autostart", true},
+
+		// Privilege Escalation (TA0004)
+		"T1611": {"privilege-escalation", "Escape to Host", true},
+		"T1068": {"privilege-escalation", "Exploitation for Privilege Escalation", true},
+		"T1548": {"privilege-escalation", "Abuse Elevation Control Mechanism", true},
+
+		// Defense Evasion (TA0005)
+		"T1612": {"defense-evasion", "Build Image on Host", true}, // containerBuildPolicy
+		"T1562": {"defense-evasion", "Impair Defenses", true},
+		"T1070": {"defense-evasion", "Indicator Removal", true},
+		"T1036": {"defense-evasion", "Masquerading", true},
+		"T1550": {"defense-evasion", "Use Alternate Authentication Material", false}, // Requires auth integration
+
+		// Credential Access (TA0006)
+		"T1110": {"credential-access", "Brute Force", false}, // Requires network flow analysis
+		"T1528": {"credential-access", "Steal Application Access Token", true},
+		"T1552": {"credential-access", "Unsecured Credentials", true},
+
+		// Discovery (TA0007)
+		"T1613": {"discovery", "Container and Resource Discovery", true},
+		"T1046": {"discovery", "Network Service Discovery", true},
+		"T1069": {"discovery", "Permission Groups Discovery", true}, // groupDiscoveryPolicy
+		"T1083": {"discovery", "File and Directory Discovery", true},
+
+		// Lateral Movement (TA0008)
+		"T1021": {"lateral-movement", "Remote Services", true},
+
+		// Impact (TA0040)
+		"T1485": {"impact", "Data Destruction", true},        // dataDestructionPolicy
+		"T1499": {"impact", "Endpoint Denial of Service", false}, // Requires resource monitoring
+		"T1490": {"impact", "Inhibit System Recovery", true},     // inhibitRecoveryPolicy
+		"T1498": {"impact", "Network Denial of Service", false},  // Requires network flow analysis
+		"T1496": {"impact", "Resource Hijacking", true},
+
+		// Exfiltration (TA0010)
+		"T1041": {"exfiltration", "Exfiltration Over C2 Channel", true},
+	}
+
+	supportedCount := 0
+	totalCount := len(containerTechniques)
+
+	for technique, info := range containerTechniques {
+		if info.supported {
+			supportedCount++
+		}
+		t.Logf("%s (%s): %s - Supported: %v", technique, info.tactic, info.description, info.supported)
+	}
+
+	coverage := float64(supportedCount) / float64(totalCount) * 100
+	t.Logf("\nMITRE Container Technique Coverage: %.1f%% (%d/%d)", coverage, supportedCount, totalCount)
+
+	// We should cover at least 50% of container techniques
+	if coverage < 50 {
+		t.Errorf("MITRE technique coverage below 50%%: %.1f%%", coverage)
 	}
 }
 

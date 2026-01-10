@@ -1,4 +1,4 @@
-"""Policy generator for Tetragon TracingPolicy and Qualys FimPolicy CRDs."""
+"""Policy generator for Qualys TracingPolicy and FimPolicy CRDs."""
 import yaml
 import os
 from dataclasses import dataclass, field
@@ -17,7 +17,7 @@ class KprobeSpec:
 
 @dataclass
 class TracingPolicy:
-    """Tetragon TracingPolicy CRD representation."""
+    """Qualys TracingPolicy CRD representation."""
     name: str
     labels: Dict[str, str]
     kprobes: List[KprobeSpec]
