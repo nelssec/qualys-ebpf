@@ -783,3 +783,253 @@ func extractProcesses(events []cdr.Event) []string {
 	}
 	return processes
 }
+
+// Anomaly represents an AI-detected anomaly for policy generation.
+type Anomaly struct {
+	Type          string
+	Feature       string
+	ContainerID   string
+	ContainerName string
+	Namespace     string
+	Score         float64
+	ProcessName   string
+	FilePath      string
+	NetworkPort   int
+	Description   string
+}
+
+// FromAnomaly generates a TracingPolicy from an AI-detected anomaly.
+func (g *Generator) FromAnomaly(anomaly Anomaly) *TracingPolicy {
+	dateStr := time.Now().Format("20060102")
+
+	switch {
+	case anomaly.Feature == "syscall_rate" || anomaly.Feature == "exec_rate":
+		return g.anomalyExecRatePolicy(anomaly, dateStr)
+	case anomaly.Feature == "network_connections" || anomaly.Feature == "outbound_bytes":
+		return g.anomalyNetworkPolicy(anomaly, dateStr)
+	case anomaly.Feature == "file_access" || anomaly.Feature == "file_writes":
+		return g.anomalyFileAccessPolicy(anomaly, dateStr)
+	case anomaly.Feature == "privilege_escalation":
+		return g.anomalyPrivEscPolicy(anomaly, dateStr)
+	default:
+		return g.anomalyGenericPolicy(anomaly, dateStr)
+	}
+}
+
+func (g *Generator) anomalyExecRatePolicy(anomaly Anomaly, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("ai-anomaly-exec-%s-%s", anomaly.ContainerName, dateStr)
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-ai-detector",
+				"ai.qualys.com/anomaly-type": anomaly.Type,
+				"ai.qualys.com/feature":      anomaly.Feature,
+				"policy.qualys.com/priority": "high",
+			},
+			Annotations: map[string]string{
+				"description":           fmt.Sprintf("AI-detected execution anomaly: %s", anomaly.Description),
+				"ai.qualys.com/score":   fmt.Sprintf("%.2f", anomaly.Score),
+				"container-id":          anomaly.ContainerID,
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_execve",
+					Syscall: true,
+					Args:    []Arg{{Index: 0, Type: "string"}},
+					Selectors: []Selector{
+						{
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) anomalyNetworkPolicy(anomaly Anomaly, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("ai-anomaly-network-%s-%s", anomaly.ContainerName, dateStr)
+
+	portValues := []string{"0"}
+	if anomaly.NetworkPort > 0 {
+		portValues = []string{fmt.Sprintf("%d", anomaly.NetworkPort)}
+	}
+
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-ai-detector",
+				"ai.qualys.com/anomaly-type": anomaly.Type,
+				"ai.qualys.com/feature":      anomaly.Feature,
+				"mitre.attack/technique":     "T1071",
+				"policy.qualys.com/priority": "high",
+			},
+			Annotations: map[string]string{
+				"description":           fmt.Sprintf("AI-detected network anomaly: %s", anomaly.Description),
+				"ai.qualys.com/score":   fmt.Sprintf("%.2f", anomaly.Score),
+				"container-id":          anomaly.ContainerID,
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_connect",
+					Syscall: true,
+					Args:    []Arg{{Index: 1, Type: "sockaddr"}},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 1, Operator: "DPort", Values: portValues},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) anomalyFileAccessPolicy(anomaly Anomaly, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("ai-anomaly-file-%s-%s", anomaly.ContainerName, dateStr)
+
+	pathValues := []string{"/"}
+	if anomaly.FilePath != "" {
+		pathValues = []string{anomaly.FilePath}
+	}
+
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-ai-detector",
+				"ai.qualys.com/anomaly-type": anomaly.Type,
+				"ai.qualys.com/feature":      anomaly.Feature,
+				"mitre.attack/technique":     "T1083",
+				"policy.qualys.com/priority": "medium",
+			},
+			Annotations: map[string]string{
+				"description":           fmt.Sprintf("AI-detected file access anomaly: %s", anomaly.Description),
+				"ai.qualys.com/score":   fmt.Sprintf("%.2f", anomaly.Score),
+				"container-id":          anomaly.ContainerID,
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_openat",
+					Syscall: true,
+					Args: []Arg{
+						{Index: 0, Type: "int"},
+						{Index: 1, Type: "string"},
+					},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 1, Operator: "Prefix", Values: pathValues},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) anomalyPrivEscPolicy(anomaly Anomaly, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("ai-anomaly-privesc-%s-%s", anomaly.ContainerName, dateStr)
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-ai-detector",
+				"ai.qualys.com/anomaly-type": anomaly.Type,
+				"ai.qualys.com/feature":      anomaly.Feature,
+				"mitre.attack/technique":     "T1548",
+				"policy.qualys.com/priority": "critical",
+			},
+			Annotations: map[string]string{
+				"description":           fmt.Sprintf("AI-detected privilege escalation: %s", anomaly.Description),
+				"ai.qualys.com/score":   fmt.Sprintf("%.2f", anomaly.Score),
+				"container-id":          anomaly.ContainerID,
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_setuid",
+					Syscall: true,
+					Selectors: []Selector{
+						{MatchActions: []MatchAction{{Action: g.action}}},
+					},
+				},
+				{
+					Call:    "sys_setgid",
+					Syscall: true,
+					Selectors: []Selector{
+						{MatchActions: []MatchAction{{Action: g.action}}},
+					},
+				},
+				{
+					Call:    "sys_capset",
+					Syscall: true,
+					Selectors: []Selector{
+						{MatchActions: []MatchAction{{Action: g.action}}},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) anomalyGenericPolicy(anomaly Anomaly, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("ai-anomaly-generic-%s-%s", anomaly.ContainerName, dateStr)
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-ai-detector",
+				"ai.qualys.com/anomaly-type": anomaly.Type,
+				"ai.qualys.com/feature":      anomaly.Feature,
+				"policy.qualys.com/priority": "medium",
+			},
+			Annotations: map[string]string{
+				"description":           fmt.Sprintf("AI-detected anomaly: %s", anomaly.Description),
+				"ai.qualys.com/score":   fmt.Sprintf("%.2f", anomaly.Score),
+				"container-id":          anomaly.ContainerID,
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_execve",
+					Syscall: true,
+					Args:    []Arg{{Index: 0, Type: "string"}},
+					Selectors: []Selector{
+						{MatchActions: []MatchAction{{Action: "Post"}}},
+					},
+				},
+			},
+		},
+	}
+}

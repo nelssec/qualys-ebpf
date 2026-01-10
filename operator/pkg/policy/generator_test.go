@@ -529,3 +529,382 @@ func BenchmarkPolicyToYAML(b *testing.B) {
 		yaml.Marshal(policies[0])
 	}
 }
+
+// AI Anomaly Policy Tests
+func TestFromAnomalyExecRate(t *testing.T) {
+	g := NewGenerator("Sigkill")
+	anomaly := Anomaly{
+		Type:          "statistical",
+		Feature:       "exec_rate",
+		ContainerID:   "abc123",
+		ContainerName: "nginx-pod",
+		Namespace:     "default",
+		Score:         85.5,
+		Description:   "Unusual execution rate detected",
+	}
+
+	policy := g.FromAnomaly(anomaly)
+	if policy == nil {
+		t.Fatal("FromAnomaly returned nil")
+	}
+
+	if policy.APIVersion != "cilium.io/v1alpha1" {
+		t.Errorf("Expected APIVersion 'cilium.io/v1alpha1', got '%s'", policy.APIVersion)
+	}
+	if policy.Kind != "TracingPolicy" {
+		t.Errorf("Expected Kind 'TracingPolicy', got '%s'", policy.Kind)
+	}
+	if !strings.Contains(policy.Metadata.Name, "ai-anomaly-exec") {
+		t.Errorf("Expected name containing 'ai-anomaly-exec', got '%s'", policy.Metadata.Name)
+	}
+	if policy.Metadata.Labels["generated-by"] != "qualys-ai-detector" {
+		t.Errorf("Expected generated-by 'qualys-ai-detector', got '%s'", policy.Metadata.Labels["generated-by"])
+	}
+	if policy.Metadata.Labels["ai.qualys.com/feature"] != "exec_rate" {
+		t.Errorf("Expected feature label 'exec_rate', got '%s'", policy.Metadata.Labels["ai.qualys.com/feature"])
+	}
+
+	// Validate kprobe
+	if len(policy.Spec.Kprobes) == 0 {
+		t.Fatal("Expected at least 1 kprobe")
+	}
+	if policy.Spec.Kprobes[0].Call != "sys_execve" {
+		t.Errorf("Expected sys_execve kprobe, got '%s'", policy.Spec.Kprobes[0].Call)
+	}
+}
+
+func TestFromAnomalyNetworkConnections(t *testing.T) {
+	g := NewGenerator("Post")
+	anomaly := Anomaly{
+		Type:          "time_series",
+		Feature:       "network_connections",
+		ContainerID:   "def456",
+		ContainerName: "api-server",
+		Namespace:     "production",
+		Score:         72.3,
+		NetworkPort:   8443,
+		Description:   "Unusual outbound connections",
+	}
+
+	policy := g.FromAnomaly(anomaly)
+	if policy == nil {
+		t.Fatal("FromAnomaly returned nil")
+	}
+
+	if !strings.Contains(policy.Metadata.Name, "ai-anomaly-network") {
+		t.Errorf("Expected name containing 'ai-anomaly-network', got '%s'", policy.Metadata.Name)
+	}
+	if policy.Metadata.Labels["mitre.attack/technique"] != "T1071" {
+		t.Errorf("Expected MITRE technique 'T1071', got '%s'", policy.Metadata.Labels["mitre.attack/technique"])
+	}
+
+	// Validate kprobe
+	if len(policy.Spec.Kprobes) == 0 {
+		t.Fatal("Expected at least 1 kprobe")
+	}
+	if policy.Spec.Kprobes[0].Call != "sys_connect" {
+		t.Errorf("Expected sys_connect kprobe, got '%s'", policy.Spec.Kprobes[0].Call)
+	}
+
+	// Validate port is included
+	foundPort := false
+	for _, sel := range policy.Spec.Kprobes[0].Selectors {
+		for _, arg := range sel.MatchArgs {
+			for _, v := range arg.Values {
+				if v == "8443" {
+					foundPort = true
+				}
+			}
+		}
+	}
+	if !foundPort {
+		t.Error("Expected port 8443 in selector")
+	}
+}
+
+func TestFromAnomalyFileAccess(t *testing.T) {
+	g := NewGenerator("Sigkill")
+	anomaly := Anomaly{
+		Type:          "behavioral",
+		Feature:       "file_access",
+		ContainerID:   "ghi789",
+		ContainerName: "worker",
+		Namespace:     "jobs",
+		Score:         91.2,
+		FilePath:      "/etc/shadow",
+		Description:   "Sensitive file access detected",
+	}
+
+	policy := g.FromAnomaly(anomaly)
+	if policy == nil {
+		t.Fatal("FromAnomaly returned nil")
+	}
+
+	if !strings.Contains(policy.Metadata.Name, "ai-anomaly-file") {
+		t.Errorf("Expected name containing 'ai-anomaly-file', got '%s'", policy.Metadata.Name)
+	}
+	if policy.Metadata.Labels["mitre.attack/technique"] != "T1083" {
+		t.Errorf("Expected MITRE technique 'T1083', got '%s'", policy.Metadata.Labels["mitre.attack/technique"])
+	}
+
+	// Validate kprobe
+	if len(policy.Spec.Kprobes) == 0 {
+		t.Fatal("Expected at least 1 kprobe")
+	}
+	if policy.Spec.Kprobes[0].Call != "sys_openat" {
+		t.Errorf("Expected sys_openat kprobe, got '%s'", policy.Spec.Kprobes[0].Call)
+	}
+
+	// Validate file path is included
+	foundPath := false
+	for _, sel := range policy.Spec.Kprobes[0].Selectors {
+		for _, arg := range sel.MatchArgs {
+			for _, v := range arg.Values {
+				if v == "/etc/shadow" {
+					foundPath = true
+				}
+			}
+		}
+	}
+	if !foundPath {
+		t.Error("Expected file path '/etc/shadow' in selector")
+	}
+}
+
+func TestFromAnomalyPrivilegeEscalation(t *testing.T) {
+	g := NewGenerator("Sigkill")
+	anomaly := Anomaly{
+		Type:          "isolation",
+		Feature:       "privilege_escalation",
+		ContainerID:   "jkl012",
+		ContainerName: "compromised",
+		Namespace:     "default",
+		Score:         99.1,
+		Description:   "Privilege escalation attempt detected",
+	}
+
+	policy := g.FromAnomaly(anomaly)
+	if policy == nil {
+		t.Fatal("FromAnomaly returned nil")
+	}
+
+	if !strings.Contains(policy.Metadata.Name, "ai-anomaly-privesc") {
+		t.Errorf("Expected name containing 'ai-anomaly-privesc', got '%s'", policy.Metadata.Name)
+	}
+	if policy.Metadata.Labels["mitre.attack/technique"] != "T1548" {
+		t.Errorf("Expected MITRE technique 'T1548', got '%s'", policy.Metadata.Labels["mitre.attack/technique"])
+	}
+	if policy.Metadata.Labels["policy.qualys.com/priority"] != "critical" {
+		t.Errorf("Expected priority 'critical', got '%s'", policy.Metadata.Labels["policy.qualys.com/priority"])
+	}
+
+	// Validate kprobes - should have sys_setuid, sys_setgid, sys_capset
+	expectedCalls := map[string]bool{"sys_setuid": false, "sys_setgid": false, "sys_capset": false}
+	for _, kprobe := range policy.Spec.Kprobes {
+		if _, ok := expectedCalls[kprobe.Call]; ok {
+			expectedCalls[kprobe.Call] = true
+		}
+	}
+	for call, found := range expectedCalls {
+		if !found {
+			t.Errorf("Expected kprobe '%s' not found", call)
+		}
+	}
+}
+
+func TestFromAnomalyGeneric(t *testing.T) {
+	g := NewGenerator("Post")
+	anomaly := Anomaly{
+		Type:          "clustering",
+		Feature:       "unknown_feature",
+		ContainerID:   "mno345",
+		ContainerName: "mystery",
+		Namespace:     "test",
+		Score:         65.0,
+		Description:   "Unknown anomaly type",
+	}
+
+	policy := g.FromAnomaly(anomaly)
+	if policy == nil {
+		t.Fatal("FromAnomaly returned nil")
+	}
+
+	if !strings.Contains(policy.Metadata.Name, "ai-anomaly-generic") {
+		t.Errorf("Expected name containing 'ai-anomaly-generic', got '%s'", policy.Metadata.Name)
+	}
+	if policy.Metadata.Labels["policy.qualys.com/priority"] != "medium" {
+		t.Errorf("Expected priority 'medium', got '%s'", policy.Metadata.Labels["policy.qualys.com/priority"])
+	}
+}
+
+func TestAnomalyPolicyYAMLOutput(t *testing.T) {
+	g := NewGenerator("Sigkill")
+	anomaly := Anomaly{
+		Type:          "statistical",
+		Feature:       "privilege_escalation",
+		ContainerID:   "test123",
+		ContainerName: "test-container",
+		Namespace:     "test-ns",
+		Score:         95.5,
+		Description:   "Critical privilege escalation",
+	}
+
+	policy := g.FromAnomaly(anomaly)
+	yamlData, err := yaml.Marshal(policy)
+	if err != nil {
+		t.Fatalf("Failed to marshal policy to YAML: %v", err)
+	}
+
+	yamlStr := string(yamlData)
+
+	// Validate YAML structure
+	requiredFields := []string{
+		"apiVersion: cilium.io/v1alpha1",
+		"kind: TracingPolicy",
+		"generated-by: qualys-ai-detector",
+		"ai.qualys.com/feature: privilege_escalation",
+		"mitre.attack/technique: T1548",
+		"kprobes:",
+		"sys_setuid",
+		"sys_capset",
+		"action: Sigkill",
+	}
+
+	for _, field := range requiredFields {
+		if !strings.Contains(yamlStr, field) {
+			t.Errorf("YAML missing required field: %s", field)
+		}
+	}
+}
+
+func TestAnomalyPolicyJSONOutput(t *testing.T) {
+	g := NewGenerator("Post")
+	anomaly := Anomaly{
+		Type:          "time_series",
+		Feature:       "network_connections",
+		ContainerID:   "json123",
+		ContainerName: "json-container",
+		Namespace:     "json-ns",
+		Score:         78.3,
+		NetworkPort:   443,
+		Description:   "Unusual HTTPS connections",
+	}
+
+	policy := g.FromAnomaly(anomaly)
+	jsonData, err := json.MarshalIndent(policy, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal policy to JSON: %v", err)
+	}
+
+	jsonStr := string(jsonData)
+
+	// Validate JSON structure
+	requiredFields := []string{
+		`"apiVersion": "cilium.io/v1alpha1"`,
+		`"kind": "TracingPolicy"`,
+		`"generated-by": "qualys-ai-detector"`,
+		`"call": "sys_connect"`,
+		`"443"`,
+	}
+
+	for _, field := range requiredFields {
+		if !strings.Contains(jsonStr, field) {
+			t.Errorf("JSON missing required field: %s", field)
+		}
+	}
+}
+
+func TestAnomalyScoreAnnotation(t *testing.T) {
+	testCases := []struct {
+		score    float64
+		expected string
+	}{
+		{85.5, "85.50"},
+		{100.0, "100.00"},
+		{0.0, "0.00"},
+		{33.333, "33.33"},
+	}
+
+	g := NewGenerator("Post")
+	for _, tc := range testCases {
+		anomaly := Anomaly{
+			Feature:       "exec_rate",
+			ContainerName: "test",
+			Score:         tc.score,
+		}
+		policy := g.FromAnomaly(anomaly)
+		actual := policy.Metadata.Annotations["ai.qualys.com/score"]
+		if actual != tc.expected {
+			t.Errorf("Score %.3f: expected '%s', got '%s'", tc.score, tc.expected, actual)
+		}
+	}
+}
+
+func TestAllAnomalyFeatures(t *testing.T) {
+	features := []struct {
+		feature      string
+		expectedCall string
+	}{
+		{"syscall_rate", "sys_execve"},
+		{"exec_rate", "sys_execve"},
+		{"network_connections", "sys_connect"},
+		{"outbound_bytes", "sys_connect"},
+		{"file_access", "sys_openat"},
+		{"file_writes", "sys_openat"},
+		{"privilege_escalation", "sys_setuid"},
+		{"unknown", "sys_execve"}, // generic fallback
+	}
+
+	g := NewGenerator("Sigkill")
+	for _, tc := range features {
+		t.Run(tc.feature, func(t *testing.T) {
+			anomaly := Anomaly{
+				Feature:       tc.feature,
+				ContainerName: "test",
+				Score:         50.0,
+			}
+			policy := g.FromAnomaly(anomaly)
+			if policy == nil {
+				t.Fatal("Policy is nil")
+			}
+			if len(policy.Spec.Kprobes) == 0 {
+				t.Fatal("No kprobes in policy")
+			}
+			if policy.Spec.Kprobes[0].Call != tc.expectedCall {
+				t.Errorf("Expected call '%s', got '%s'", tc.expectedCall, policy.Spec.Kprobes[0].Call)
+			}
+		})
+	}
+}
+
+func BenchmarkFromAnomaly(b *testing.B) {
+	g := NewGenerator("Sigkill")
+	anomaly := Anomaly{
+		Type:          "statistical",
+		Feature:       "privilege_escalation",
+		ContainerID:   "bench123",
+		ContainerName: "bench-container",
+		Score:         95.0,
+		Description:   "Benchmark test",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		g.FromAnomaly(anomaly)
+	}
+}
+
+func BenchmarkAnomalyPolicyToYAML(b *testing.B) {
+	g := NewGenerator("Sigkill")
+	anomaly := Anomaly{
+		Feature:       "network_connections",
+		ContainerName: "bench",
+		NetworkPort:   8080,
+	}
+	policy := g.FromAnomaly(anomaly)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		yaml.Marshal(policy)
+	}
+}
