@@ -1,41 +1,70 @@
 # Qualys CDR Policy Operator
 
-Automatically generates Tetragon TracingPolicies from Qualys CDR (Cloud Detection and Response) events.
+Automatically generates Tetragon TracingPolicies and Cilium NetworkPolicies from Qualys CDR events and threat intelligence feeds.
 
-## How It Works
+## Features
+
+- **CDR Event Processing**: Fetches detection events and generates blocking policies
+- **Dynamic IOC Extraction**: Extracts IPs, domains, ports from events
+- **Threat Intel Integration**: Downloads and applies public threat feeds
+- **IP Reputation Checking**: Validates IPs against AbuseIPDB and blocklists
+- **Dual Policy Output**: Generates both Tetragon (syscall) and Cilium (network) policies
+
+## Architecture
 
 ```
-┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
-│  Qualys CDR API │────>│   Operator   │────>│ TracingPolicies │
-│   (Detections)  │     │  (Go/K8s)    │     │   (Tetragon)    │
-└─────────────────┘     └──────────────┘     └─────────────────┘
-                              │
-                              v
-                        ┌──────────┐
-                        │ Cluster  │
-                        │ Security │
-                        └──────────┘
+                                    ┌─────────────────────┐
+                                    │   Threat Intel      │
+                                    │   Feeds             │
+                                    │   - Feodo Tracker   │
+                                    │   - Tor Exit Nodes  │
+                                    │   - Emerging Threats│
+                                    │   - AbuseIPDB       │
+                                    └──────────┬──────────┘
+                                               │
+┌─────────────────────┐                        │
+│   Qualys CDR API    │                        │
+│   /cdr-api/rest/v1  │                        │
+└──────────┬──────────┘                        │
+           │                                   │
+           v                                   v
+┌──────────────────────────────────────────────────────────┐
+│                    Policy Operator                        │
+│  ┌────────────────┐  ┌────────────────┐  ┌─────────────┐ │
+│  │ CDR Client     │  │ Network        │  │ Reputation  │ │
+│  │ - Fetch events │  │ Blocker        │  │ Checker     │ │
+│  │ - Parse threats│  │ - Extract IOCs │  │ - Feed sync │ │
+│  └───────┬────────┘  │ - Build lists  │  │ - IP lookup │ │
+│          │           └───────┬────────┘  └──────┬──────┘ │
+│          v                   v                  v         │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │              Policy Generator                       │  │
+│  │  - TracingPolicy (Tetragon)                        │  │
+│  │  - CiliumNetworkPolicy                             │  │
+│  └────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────┘
+           │
+           v
+┌──────────────────────────────────────────────────────────┐
+│                   Kubernetes Cluster                      │
+│  ┌────────────────────┐    ┌────────────────────┐        │
+│  │  TracingPolicy     │    │  CiliumNetworkPolicy│        │
+│  │  (sys_connect,     │    │  (egressDeny,       │        │
+│  │   sys_execve)      │    │   toCIDR, toFQDNs)  │        │
+│  └─────────┬──────────┘    └──────────┬─────────┘        │
+│            │                          │                   │
+│            v                          v                   │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │              eBPF Enforcement                       │  │
+│  │  Tetragon: Syscall blocking (Sigkill)              │  │
+│  │  Cilium:   Network blocking (Drop)                 │  │
+│  └────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────┘
 ```
-
-1. **Fetch**: Operator queries Qualys CDR API for recent detection events
-2. **Analyze**: Groups events by threat category (IMDS access, network scanning, etc.)
-3. **Generate**: Creates TracingPolicies to detect/block similar attacks
-4. **Apply**: Deploys policies to cluster (optional)
-
-## Supported Threat Categories
-
-| CDR Category | MITRE ATT&CK | Generated Policy |
-|--------------|--------------|------------------|
-| Cloud_Credentials_Accessed_By_Network_Utility | T1552.005 | Block curl/wget to IMDS |
-| Network_Scanning_Utility | T1046 | Block nmap, masscan, raw sockets |
-| Container_Escape | T1611 | Block unshare, setns |
-| Privilege_Escalation | T1548 | Block setuid(0) |
-| Crypto_Mining | T1496 | Block mining pool ports |
-| Reverse_Shell | T1059.004 | Block shell spawning |
 
 ## Quick Start
 
-### Option 1: CLI (One-time generation)
+### Basic Usage
 
 ```bash
 # Set credentials
@@ -43,124 +72,149 @@ export QUALYS_USERNAME="your_username"
 export QUALYS_PASSWORD="your_password"
 export QUALYS_GATEWAY_URL="gateway.qg2.apps.qualys.com"
 
-# Run generator
-go run ./cmd/main.go --once --hours=24 --action=Post --output=./policies
+# Generate policies from CDR events
+go run ./cmd/main.go --once --hours=24 --output=./policies
 
-# Review and apply
-kubectl apply -f ./policies/
+# With threat intel integration
+go run ./cmd/main.go --once --threat-intel --output=./policies
+
+# With IP reputation checking
+export ABUSEIPDB_API_KEY="your_api_key"
+go run ./cmd/main.go --once --threat-intel --reputation-threshold=50 --output=./policies
 ```
 
-### Option 2: Kubernetes CronJob (Automated)
+### Kubernetes Deployment
 
 ```bash
-# 1. Create namespace and secret
+# Create namespace and credentials
 kubectl create namespace qualys-system
 
 kubectl create secret generic qualys-credentials \
-  --from-literal=username=YOUR_USERNAME \
-  --from-literal=password=YOUR_PASSWORD \
+  --from-literal=username=$QUALYS_USERNAME \
+  --from-literal=password=$QUALYS_PASSWORD \
   -n qualys-system
 
-# 2. Create config
-kubectl create configmap qualys-config \
-  --from-literal=QUALYS_PLATFORM=US2 \
+# Optional: Add AbuseIPDB API key
+kubectl create secret generic abuseipdb-credentials \
+  --from-literal=api-key=$ABUSEIPDB_API_KEY \
   -n qualys-system
 
-# 3. Build and push operator image
-docker build -t your-registry/policy-operator:latest .
-docker push your-registry/policy-operator:latest
-
-# 4. Update image in cronjob.yaml and deploy
+# Deploy CronJob
 kubectl apply -f deploy/cronjob.yaml
-
-# 5. Trigger manually to test
-kubectl create job --from=cronjob/qualys-policy-generator test-run -n qualys-system
-kubectl logs -f job/test-run -n qualys-system
 ```
 
-### Option 3: Long-running Controller
-
-```bash
-# Run continuously with 1-hour interval
-go run ./cmd/main.go --interval=1h --action=Sigkill --apply
-```
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `QUALYS_USERNAME` | Qualys API username | Yes |
-| `QUALYS_PASSWORD` | Qualys API password | Yes |
-| `QUALYS_GATEWAY_URL` | Gateway URL (e.g., gateway.qg2.apps.qualys.com) | No |
-| `QUALYS_PLATFORM` | Platform ID (US1, US2, CA1, etc.) | No |
-
-### CLI Flags
+## CLI Reference
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--platform` | - | Qualys platform (US1, US2, CA1, EU1, etc.) |
 | `--gateway` | - | Gateway URL (overrides platform) |
-| `--hours` | 24 | Lookback period for events |
+| `--hours` | 24 | Lookback period for CDR events |
 | `--action` | Post | Policy action: Post (audit) or Sigkill (block) |
 | `--output` | ./policies | Output directory |
-| `--apply` | false | Apply policies directly to cluster |
-| `--once` | false | Run once and exit |
-| `--interval` | 1h | Interval between updates (controller mode) |
+| `--apply` | false | Apply policies to cluster via kubectl |
+| `--once` | false | Run once and exit (CronJob mode) |
+| `--interval` | 1h | Update interval (controller mode) |
+| `--threat-intel` | false | Enable threat intel feed integration |
+| `--reputation-threshold` | 50 | Block IPs with score >= threshold |
 
-### Qualys Platforms
+## Generated Policies
 
-| Platform | Gateway URL |
-|----------|-------------|
-| US1 | gateway.qg1.apps.qualys.com |
-| US2 | gateway.qg2.apps.qualys.com |
-| US3 | gateway.qg3.apps.qualys.com |
-| US4 | gateway.qg4.apps.qualys.com |
-| EU1 | gateway.qg1.apps.qualys.eu |
-| EU2 | gateway.qg2.apps.qualys.eu |
-| CA1 | gateway.qg1.apps.qualys.ca |
-| IN1 | gateway.qg1.apps.qualys.in |
-| AE1 | gateway.qg1.apps.qualys.ae |
-| UK1 | gateway.qg1.apps.qualys.co.uk |
-| AU1 | gateway.qg1.apps.qualys.com.au |
-| KSA1 | gateway.qg1.apps.qualysksa.com |
+### From CDR Events
+
+| CDR Category | Generated Policy | Action |
+|--------------|------------------|--------|
+| Cloud_Credentials_Accessed | Block curl/wget to IMDS | Sigkill |
+| Network_Scanning_Utility | Block nmap, raw sockets | Sigkill |
+| Container_Escape | Block unshare, setns | Sigkill |
+| Crypto_Mining | Block mining pool ports | Sigkill |
+
+### From Threat Intel
+
+| Feed | Type | Category |
+|------|------|----------|
+| Feodo Tracker | IP blocklist | C2 servers |
+| Tor Exit Nodes | IP blocklist | Anonymization |
+| Emerging Threats | IP blocklist | Compromised hosts |
+| Blocklist.de | IP blocklist | Attackers |
+| CINSscore | IP blocklist | Scanners |
+
+### Output Files
+
+```
+policies/
+├── cdr-block-cloud-creds-20260110.yaml     # Behavior policy
+├── cdr-block-network-scan-20260110.yaml    # Behavior policy
+├── cdr-dynamic-blocklist.yaml              # Extracted IOCs
+├── cilium-cdr-blocklist.yaml               # Network policy
+└── threat-intel-blocklist.yaml             # Known bad IPs
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `QUALYS_USERNAME` | Yes | Qualys API username |
+| `QUALYS_PASSWORD` | Yes | Qualys API password |
+| `QUALYS_GATEWAY_URL` | No | Gateway URL (default: US2) |
+| `ABUSEIPDB_API_KEY` | No | AbuseIPDB API key for reputation |
+
+## Threat Intelligence Feeds
+
+The operator downloads and aggregates multiple threat intel feeds:
+
+```go
+feeds := []struct{
+    name     string
+    url      string
+    category string
+}{
+    {"feodo-c2", "https://feodotracker.abuse.ch/downloads/ipblocklist.txt", "c2"},
+    {"tor-exit", "https://check.torproject.org/torbulkexitlist", "tor"},
+    {"emerging-threats", "https://rules.emergingthreats.net/blockrules/compromised-ips.txt", "compromised"},
+    {"blocklist-de", "https://lists.blocklist.de/lists/all.txt", "attacker"},
+    {"cinsscore", "https://cinsscore.com/list/ci-badguys.txt", "scanner"},
+}
+```
 
 ## Example Output
 
-Given CDR events for "Cloud_Credentials_Accessed_By_Network_Utility":
+```
+=== Policy Generation Run: 2026-01-10T16:45:00Z ===
 
-```yaml
-apiVersion: cilium.io/v1alpha1
-kind: TracingPolicy
-metadata:
-  name: cdr-block-cloud-creds-20260110
-  labels:
-    generated-by: qualys-cdr-operator
-    mitre.attack/technique: T1552.005
-    policy.qualys.com/priority: critical
-spec:
-  kprobes:
-    - call: sys_connect
-      syscall: true
-      args:
-        - index: 1
-          type: sockaddr
-      selectors:
-        - matchArgs:
-            - index: 1
-              operator: SAddr
-              values: ["169.254.169.254"]
-          matchBinaries:
-            - operator: In
-              values: ["/usr/bin/curl", "/usr/bin/wget"]
-          matchActions:
-            - action: Sigkill
+Fetching CDR events (last 24 hours)...
+Found 100 events
+
+Event categories:
+  Cloud_Credentials_Accessed_By_Network_Utility: 98
+  Network_Scanning_Utility: 2
+
+Generating behavior-based policies...
+Generated 2 behavior policies
+  Created: policies/cdr-block-cloud-creds-20260110.yaml
+  Created: policies/cdr-block-network-scan-20260110.yaml
+
+Extracting network indicators from events...
+Extracted: 5 IPs, 0 domains, 2 ports
+  Created: policies/cdr-dynamic-blocklist.yaml
+  Created: policies/cilium-cdr-blocklist.yaml
+
+Loading threat intelligence feeds...
+Loaded 15234 IPs from feodo-c2
+Loaded 1203 IPs from tor-exit
+Loaded 8921 IPs from emerging-threats
+Loaded 42156 IPs from blocklist-de
+Loaded 3421 IPs from cinsscore
+Known bad IPs: 70935
+  Created: policies/threat-intel-blocklist.yaml
+
+Done.
 ```
 
-## Security Notes
+## Security Considerations
 
-- Store credentials in Kubernetes Secrets, not ConfigMaps
-- Use RBAC to limit who can read the qualys-credentials secret
-- Generated policies should be reviewed before applying in production
-- Start with `--action=Post` (audit) before switching to `--action=Sigkill` (block)
+1. **Credentials**: Always use Kubernetes Secrets, never ConfigMaps
+2. **Audit First**: Start with `--action=Post` before `--action=Sigkill`
+3. **Review Policies**: Inspect generated policies before applying
+4. **Rate Limits**: AbuseIPDB has API rate limits; use caching
+5. **Policy Size**: Threat intel blocklists are capped at 1000 IPs
