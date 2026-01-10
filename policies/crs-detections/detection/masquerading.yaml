@@ -1,0 +1,28 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-masquerading
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Defense_Evasion_Via_Masquerading_T1036_003
+    mitre.attack/technique: T1036.003
+    mitre.attack/tactic: defense-evasion
+    policy.qualys.com/severity: medium
+  annotations:
+    description: Detect masquerading via renamed binaries
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Prefix
+        values:
+        - /dev/shm/
+        - /tmp/.
+      matchActions:
+      - action: Post

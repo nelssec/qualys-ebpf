@@ -1,0 +1,22 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: crs-block-cloud-imds
+  labels:
+    generated-by: qualys-crs
+    mitre.attack/technique: T1552.005
+    mitre.attack/tactic: credential-access
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Block access to cloud instance metadata service (IMDS)
+spec:
+  endpointSelector: {}
+  egressDeny:
+    - toCIDR:
+        - 169.254.169.254/32
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP

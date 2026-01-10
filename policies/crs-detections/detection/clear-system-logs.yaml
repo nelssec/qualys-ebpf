@@ -1,0 +1,28 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-clear-system-logs
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Clear_System_Logs_T1070_002
+    mitre.attack/technique: T1070.002
+    mitre.attack/tactic: defense-evasion
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect removal of system logs
+spec:
+  kprobes:
+  - call: sys_unlinkat
+    syscall: true
+    args:
+    - index: 1
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: Prefix
+        values:
+        - /var/log/
+        - /var/log/audit/
+      matchActions:
+      - action: Post

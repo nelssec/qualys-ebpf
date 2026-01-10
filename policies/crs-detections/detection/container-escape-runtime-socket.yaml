@@ -1,0 +1,31 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-container-escape-runtime-socket
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Container_escape_using_runtime_socket_T1611
+    mitre.attack/technique: T1611
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Detect container escape via runtime socket
+spec:
+  kprobes:
+  - call: sys_openat
+    syscall: true
+    args:
+    - index: 1
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: Postfix
+        values:
+        - /docker.sock
+        - /containerd.sock
+        - /crio.sock
+        - /dockershim.sock
+        - /containerd/containerd.sock
+      matchActions:
+      - action: Post

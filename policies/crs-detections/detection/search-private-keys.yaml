@@ -1,0 +1,32 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-search-private-keys
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Search_Private_Keys_or_Passwords_T1552_001
+    mitre.attack/technique: T1552.001
+    mitre.attack/tactic: credential-access
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect searching for private keys or password files
+spec:
+  kprobes:
+  - call: sys_openat
+    syscall: true
+    args:
+    - index: 1
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: Postfix
+        values:
+        - /id_rsa
+        - /id_dsa
+        - /id_ecdsa
+        - /id_ed25519
+        - /etc/shadow
+        - /etc/passwd
+      matchActions:
+      - action: Post

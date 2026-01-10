@@ -1,0 +1,28 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-insmod-container
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Insmod_Executed_In_Container_T1014
+    mitre.attack/technique: T1014
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Detect insmod execution in container (kernel module loading)
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /insmod
+        - /modprobe
+      matchActions:
+      - action: Post

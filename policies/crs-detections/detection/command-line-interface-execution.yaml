@@ -1,0 +1,37 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-command-line-interface-execution
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Execution_Via_Command_Line_Interface_T1059_004
+    mitre.attack/technique: T1059.004
+    mitre.attack/tactic: execution
+    policy.qualys.com/severity: medium
+  annotations:
+    description: Detect command line interface execution for shell commands
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    - index: 1
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /sh
+        - /bash
+        - /zsh
+        - /dash
+        - /ash
+      - index: 1
+        operator: Contains
+        values:
+        - -c
+      matchActions:
+      - action: Post

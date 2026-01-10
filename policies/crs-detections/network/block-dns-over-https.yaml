@@ -1,0 +1,25 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: crs-block-doh-providers
+  labels:
+    generated-by: qualys-crs
+    mitre.attack/technique: T1071.004
+    mitre.attack/tactic: command-and-control
+    policy.qualys.com/severity: medium
+  annotations:
+    description: Block DNS over HTTPS to prevent DNS tunneling and evasion
+spec:
+  endpointSelector: {}
+  egressDeny:
+    - toFQDNs:
+        - matchName: "dns.google"
+        - matchName: "dns.google.com"
+        - matchName: "cloudflare-dns.com"
+        - matchName: "1dot1dot1dot1.cloudflare-dns.com"
+        - matchName: "dns.quad9.net"
+        - matchName: "doh.opendns.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

@@ -1,0 +1,101 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-pci-compliant-namespace
+  labels:
+    generated-by: qualys-crs
+    policy.qualys.com/scope: namespace
+    policy.qualys.com/compliance: pci-dss
+    policy.qualys.com/severity: critical
+  annotations:
+    description: PCI-DSS compliant security policy for cardholder data environments
+spec:
+  kprobes:
+    # PCI 6.5.1 - Block SQL injection vectors (DB clients spawning shells)
+    - call: sys_execve
+      syscall: true
+      args:
+        - index: 0
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Postfix
+              values:
+                - /sh
+                - /bash
+          matchBinaries:
+            - operator: In
+              values:
+                - /usr/bin/mysql
+                - /usr/bin/psql
+                - /usr/bin/sqlite3
+          matchActions:
+            - action: Sigkill
+
+    # PCI 10.5 - Block log tampering
+    - call: sys_unlinkat
+      syscall: true
+      args:
+        - index: 1
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 1
+              operator: Prefix
+              values:
+                - /var/log/
+                - /var/log/audit/
+          matchActions:
+            - action: Sigkill
+
+    # PCI 8.2 - Block credential theft
+    - call: sys_openat
+      syscall: true
+      args:
+        - index: 1
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 1
+              operator: Postfix
+              values:
+                - /etc/shadow
+                - /.bash_history
+                - /.aws/credentials
+          matchActions:
+            - action: Sigkill
+
+    # PCI 11.4 - Block network intrusion tools
+    - call: sys_execve
+      syscall: true
+      args:
+        - index: 0
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Postfix
+              values:
+                - /nmap
+                - /masscan
+                - /tcpdump
+                - /wireshark
+                - /tshark
+          matchActions:
+            - action: Sigkill
+
+    # Block IMDS access (cloud credential theft)
+    - call: sys_connect
+      syscall: true
+      args:
+        - index: 1
+          type: sockaddr
+      selectors:
+        - matchArgs:
+            - index: 1
+              operator: SAddr
+              values:
+                - 169.254.169.254
+          matchActions:
+            - action: Sigkill

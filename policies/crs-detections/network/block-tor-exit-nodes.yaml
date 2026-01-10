@@ -1,0 +1,27 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: crs-block-tor-ports
+  labels:
+    generated-by: qualys-crs
+    mitre.attack/technique: T1090.003
+    mitre.attack/tactic: command-and-control
+    policy.qualys.com/severity: high
+  annotations:
+    description: Block outbound connections to common Tor ports
+spec:
+  endpointSelector: {}
+  egressDeny:
+    - toPorts:
+        - ports:
+            # Tor directory and relay ports
+            - port: "9001"
+              protocol: TCP
+            - port: "9030"
+              protocol: TCP
+            - port: "9050"
+              protocol: TCP
+            - port: "9051"
+              protocol: TCP
+            - port: "9150"
+              protocol: TCP

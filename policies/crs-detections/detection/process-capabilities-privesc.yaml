@@ -1,0 +1,30 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-process-capabilities-privesc
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Privilege_Escalation_Via_Process_Capabilities_T1548
+    mitre.attack/technique: T1548
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Detect privilege escalation via process capabilities
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchCapabilities:
+      - type: Effective
+        operator: In
+        values:
+        - CAP_SETUID
+        - CAP_SETGID
+        - CAP_DAC_OVERRIDE
+        - CAP_DAC_READ_SEARCH
+      matchActions:
+      - action: Post

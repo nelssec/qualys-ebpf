@@ -1,53 +1,95 @@
 # Qualys eBPF Threat Detection & Prevention
 
-Kubernetes CRDs and tooling for threat detection and prevention using Qualys Container Runtime Security (CRS) with Tetragon as the eBPF sensor.
+Enterprise-grade Kubernetes runtime security using Qualys Container Runtime Security (CRS) with Tetragon as the eBPF sensor. Provides real-time threat detection, prevention, and response with AI-powered anomaly detection and multi-cluster federation.
 
 ## Overview
 
 This repository provides:
 
-- **Base TracingPolicy CRDs** for threat detection (audit mode)
+- **49 CRS Detection Policies** mapped to MITRE ATT&CK techniques
 - **Prevention TracingPolicy CRDs** for threat blocking (enforcement mode)
 - **FimPolicy CRDs** for file integrity monitoring
-- **Go operator** for automated policy generation from Qualys CDR events
-- **Python generator** for policy creation and threat intel integration
+- **Go operator** with real-time webhook, AI anomaly detection, and multi-cluster federation
+- **Network Security Policies** for threat intel-based blocking
+- **Kubernetes Admission Controller** for pre-deployment security
+
+## Key Features
+
+### Runtime Detection & Prevention
+- **49 MITRE-mapped detection rules** covering persistence, privilege escalation, credential access, lateral movement, defense evasion, and more
+- **Real-time process enforcement** via Sigkill, syscall override, and LSM hooks
+- **Container response actions** including stop, pause, kill, quarantine, and network isolation
+- **File integrity monitoring** for critical system and configuration files
+
+### AI-Powered Security
+- **Behavioral profiling** with configurable learning periods (default 48hr)
+- **Statistical anomaly detection** using Z-score and IQR analysis
+- **Time series analysis** with trend detection and moving averages
+- **Isolation Forest ML algorithm** for unsupervised anomaly detection
+- **K-means clustering** for behavioral grouping and outlier detection
+
+### Multi-Cluster Federation
+- **Hub-spoke architecture** for central policy management
+- **Federated TracingPolicies** with per-cluster overrides
+- **Cross-cluster event aggregation** and correlation
+- **Coordinated attack detection** across multiple Kubernetes clusters
+- **Kubernetes-native CRDs** for federation management
+
+### Integrations
+- **SIEM/SOAR outputs**: Slack, PagerDuty, Microsoft Teams, Splunk HEC, Elasticsearch, Syslog
+- **Threat intelligence feeds**: 5+ IP reputation sources with auto-updates
+- **DNS threat monitoring** with DGA detection and malicious domain blocking
+- **Qualys CDR integration** for unified cloud/container detection
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Qualys Cloud Platform                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
-│  │  CDR API    │  │  CRS API    │  │  Threat Intelligence   │ │
-│  │  Detections │  │  Runtime    │  │  IOCs, Vulnerabilities │ │
-│  └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘ │
-└─────────┼────────────────┼─────────────────────┼───────────────┘
-          │                │                     │
-          v                v                     v
-    ┌─────────────────────────────────────────────────┐
-    │         Policy Operator (Go/Python)              │
-    │  • Fetches CDR detection events                  │
-    │  • Analyzes threat patterns                      │
-    │  • Generates TracingPolicies                     │
-    │  • Runs as CronJob or Controller                 │
-    └─────────────────────────┬───────────────────────┘
-                              │
-                              v
-    ┌─────────────────────────────────────────────────┐
-    │            Kubernetes Cluster                    │
-    │  ┌──────────────────┐  ┌──────────────────────┐ │
-    │  │  TracingPolicies │  │  CiliumNetworkPolicy │ │
-    │  │  (Tetragon)      │  │  (CNI-level)         │ │
-    │  └────────┬─────────┘  └──────────┬───────────┘ │
-    │           │                       │             │
-    │           v                       v             │
-    │  ┌────────────────────────────────────────────┐ │
-    │  │          eBPF Enforcement                  │ │
-    │  │  • Syscall interception (execve, connect) │ │
-    │  │  • Network filtering (L3/L4/L7)           │ │
-    │  │  • Process termination (Sigkill)          │ │
-    │  └────────────────────────────────────────────┘ │
-    └─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        Qualys Cloud Platform                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────┐                  │
+│  │  CDR API    │  │  CRS API    │  │ Threat Intel     │                  │
+│  │  Detections │  │  Runtime    │  │ IOCs, Feeds      │                  │
+│  └──────┬──────┘  └──────┬──────┘  └────────┬─────────┘                  │
+└─────────┼────────────────┼──────────────────┼────────────────────────────┘
+          │                │                  │
+          v                v                  v
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     Policy Operator (Go)                                  │
+│  ┌───────────────┐  ┌───────────────┐  ┌──────────────┐  ┌────────────┐ │
+│  │ CDR Client    │  │ AI Detector   │  │ Federation   │  │ Admission  │ │
+│  │ - Events      │  │ - Isolation   │  │ Manager      │  │ Controller │ │
+│  │ - Detections  │  │   Forest      │  │ - Hub/Spoke  │  │ - Pod      │ │
+│  │               │  │ - Clustering  │  │ - Policy     │  │   Validation│ │
+│  │               │  │ - Z-Score     │  │   Sync       │  │            │ │
+│  └───────┬───────┘  └───────┬───────┘  └──────┬───────┘  └──────┬─────┘ │
+│          │                  │                 │                 │        │
+│  ┌───────┴──────────────────┴─────────────────┴─────────────────┴─────┐ │
+│  │                        Response Engine                              │ │
+│  │  Kill │ Stop │ Pause │ Quarantine │ Forensics │ Network Isolate    │ │
+│  └───────────────────────────────────┬────────────────────────────────┘ │
+│                                      │                                   │
+│  ┌───────────────────────────────────┴────────────────────────────────┐ │
+│  │                      Output Integrations                            │ │
+│  │  Slack │ PagerDuty │ Teams │ Splunk │ Elasticsearch │ Syslog       │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────┬───────────────────────────────────┘
+                                       │
+          ┌────────────────────────────┼────────────────────────────┐
+          │                            │                            │
+          v                            v                            v
+┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+│  Cluster: Hub       │    │  Cluster: Spoke 1   │    │  Cluster: Spoke 2   │
+│  ┌───────────────┐  │    │  ┌───────────────┐  │    │  ┌───────────────┐  │
+│  │TracingPolicy  │  │    │  │TracingPolicy  │  │    │  │TracingPolicy  │  │
+│  │CiliumPolicy   │  │    │  │CiliumPolicy   │  │    │  │CiliumPolicy   │  │
+│  │FederatedCRDs  │  │    │  │(Synced)       │  │    │  │(Synced)       │  │
+│  └───────┬───────┘  │    │  └───────┬───────┘  │    │  └───────┬───────┘  │
+│          v          │    │          v          │    │          v          │
+│  ┌───────────────┐  │    │  ┌───────────────┐  │    │  ┌───────────────┐  │
+│  │eBPF Enforce   │  │    │  │eBPF Enforce   │  │    │  │eBPF Enforce   │  │
+│  │Tetragon+Cilium│  │    │  │Tetragon+Cilium│  │    │  │Tetragon+Cilium│  │
+│  └───────────────┘  │    │  └───────────────┘  │    │  └───────────────┘  │
+└─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
 ## Prerequisites
@@ -72,20 +114,34 @@ helm install qualys-tc qualys-helm-chart/qualys-tc \
 
 ## Policy Types
 
-### Detection Policies (Audit Mode)
+### CRS Detection Policies (49 Rules)
 
-Located in `policies/detection/`. These policies log suspicious activity without blocking:
+Located in `policies/crs-detections/`. Comprehensive detection coverage mapped to MITRE ATT&CK:
 
-| Policy | MITRE ATT&CK | Description |
-|--------|--------------|-------------|
-| reverse-shell-detection | T1059 | Monitors shell/scripting interpreter execution |
-| privilege-escalation-detection | T1548 | Detects setuid/setgid and capability changes |
-| container-escape-detection | T1611 | Monitors namespace manipulation, mounts |
-| crypto-miner-detection | T1496 | Detects mining binaries and pool connections |
-| lateral-movement-detection | T1021 | Monitors SSH, kubectl, and recon tools |
-| credential-access-detection | T1552 | Monitors access to sensitive credential files |
-| persistence-detection | T1053 | Monitors cron, systemd, and init.d changes |
-| webshell-detection | T1505.003 | Detects shells spawned from web servers |
+| Category | Rules | MITRE Tactics | Key Detections |
+|----------|-------|---------------|----------------|
+| **Persistence** | 8 | TA0003 | Cron jobs, systemd services, init scripts, kernel modules |
+| **Privilege Escalation** | 10 | TA0004 | Setuid/setgid, sudo abuse, capability changes, DAC bypass |
+| **Credential Access** | 6 | TA0006 | /etc/shadow, SSH keys, cloud credentials, service accounts |
+| **Defense Evasion** | 7 | TA0005 | Log tampering, timestomping, masquerading, rootkits |
+| **Lateral Movement** | 4 | TA0008 | SSH, kubectl exec, network scanning, port forwarding |
+| **Execution** | 5 | TA0002 | Reverse shells, script interpreters, container exec |
+| **Collection** | 3 | TA0009 | Data staging, archive creation, sensitive file access |
+| **Command & Control** | 3 | TA0011 | DNS tunneling, unusual ports, encrypted channels |
+| **Exfiltration** | 3 | TA0010 | Data transfer, cloud storage, encoding |
+
+Deploy with Kustomize overlays for different environments:
+
+```bash
+# Development (audit only)
+kubectl apply -k policies/crs-detections/kustomize/overlays/dev
+
+# Staging (selective enforcement)
+kubectl apply -k policies/crs-detections/kustomize/overlays/staging
+
+# Production (full enforcement)
+kubectl apply -k policies/crs-detections/kustomize/overlays/prod
+```
 
 ### Prevention Policies (Enforcement Mode)
 
@@ -405,29 +461,77 @@ kubectl apply -f policies/network/threat-intel-cronjob.yaml
 
 ```
 qualys-ebpf/
-├── operator/                 # Go-based policy operator
-│   ├── cmd/main.go          # CLI and controller entrypoint
+├── operator/                      # Go-based policy operator
+│   ├── cmd/main.go               # CLI and controller entrypoint
 │   ├── pkg/
-│   │   ├── cdr/client.go    # Qualys CDR API client
-│   │   └── policy/generator.go # Policy generation logic
+│   │   ├── admission/            # Kubernetes admission controller
+│   │   │   └── controller.go     # ValidatingWebhook for pod security
+│   │   ├── ai/                   # AI-powered anomaly detection
+│   │   │   └── detector.go       # Isolation forest, clustering, Z-score
+│   │   ├── behavior/             # Behavioral profiling
+│   │   │   └── profiler.go       # Learning mode, anomaly scoring
+│   │   ├── cdr/                  # Qualys CDR API client
+│   │   │   └── client.go         # Event fetching, authentication
+│   │   ├── correlation/          # Attack chain correlation
+│   │   │   └── engine.go         # 7 attack patterns, MITRE mapping
+│   │   ├── dns/                  # DNS monitoring
+│   │   │   └── monitor.go        # DGA detection, threat feeds
+│   │   ├── drift/                # Container drift detection
+│   │   │   └── detector.go       # Executable tracking, baselines
+│   │   ├── federation/           # Multi-cluster federation
+│   │   │   ├── manager.go        # Hub-spoke, policy sync
+│   │   │   └── types.go          # CRD type definitions
+│   │   ├── network/              # Network threat blocking
+│   │   │   └── blocker.go        # IOC extraction, policy generation
+│   │   ├── outputs/              # SIEM/SOAR integrations
+│   │   │   └── integrations.go   # Slack, PagerDuty, Splunk, etc.
+│   │   ├── policy/               # TracingPolicy generator
+│   │   │   └── generator.go      # Policy generation logic
+│   │   ├── reputation/           # IP reputation checking
+│   │   │   └── checker.go        # Threat feed aggregation
+│   │   ├── response/             # Response actions
+│   │   │   └── actions.go        # Kill, stop, pause, quarantine
+│   │   └── webhook/              # Event webhook server
+│   │       └── server_v2.go      # Real-time event processing
+│   ├── config/
+│   │   ├── crds/                 # Custom Resource Definitions
+│   │   │   ├── federation.qualys.com_federatedclusters.yaml
+│   │   │   ├── federation.qualys.com_federatedtracingpolicies.yaml
+│   │   │   └── federation.qualys.com_federatednetworkpolicies.yaml
+│   │   └── samples/              # Example configurations
+│   │       └── federation-example.yaml
 │   ├── deploy/
-│   │   ├── cronjob.yaml     # Kubernetes CronJob deployment
-│   │   └── secret.yaml.example # Credentials template
+│   │   ├── cronjob.yaml         # Kubernetes CronJob deployment
+│   │   └── secret.yaml.example  # Credentials template
 │   ├── Dockerfile
 │   └── README.md
 ├── policies/
-│   ├── detection/           # Audit-mode TracingPolicies
-│   ├── prevention/          # Enforcement-mode TracingPolicies
-│   ├── fim/                 # FimPolicies
-│   ├── network/             # Network security (Tetragon + Cilium)
-│   └── library/             # Curated policies by maturity
-│       ├── stable/          # Production-ready policies
-│       ├── incubating/      # Robust but may need tuning
-│       └── sandbox/         # Experimental policies
-├── generator/               # Python generator (alternative)
-│   ├── cli.py              # Command-line interface
-│   ├── qualys_cdr_client.py # Qualys CDR/CS API client
-│   ├── platforms.py        # Platform URL mapping
+│   ├── crs-detections/          # 49 CRS detection rules
+│   │   ├── generated/           # Auto-generated YAML policies
+│   │   ├── kustomize/           # Kustomize overlays
+│   │   │   ├── base/            # Base policies
+│   │   │   └── overlays/        # Environment-specific
+│   │   │       ├── dev/         # Development (audit only)
+│   │   │       ├── staging/     # Staging (selective enforcement)
+│   │   │       └── prod/        # Production (full enforcement)
+│   │   └── README.md
+│   ├── detection/               # Audit-mode TracingPolicies
+│   ├── prevention/              # Enforcement-mode TracingPolicies
+│   ├── fim/                     # FimPolicies
+│   ├── network/                 # Network security (Tetragon + Cilium)
+│   │   ├── block-imds.yaml             # Block cloud metadata service
+│   │   ├── block-crypto-mining-pools.yaml
+│   │   ├── block-reverse-shell-ports.yaml
+│   │   ├── block-tor-exit-nodes.yaml
+│   │   └── block-dns-over-https.yaml
+│   └── library/                 # Curated policies by maturity
+│       ├── stable/              # Production-ready policies
+│       ├── incubating/          # Robust but may need tuning
+│       └── sandbox/             # Experimental policies
+├── generator/                   # Python generator (alternative)
+│   ├── cli.py                  # Command-line interface
+│   ├── qualys_cdr_client.py    # Qualys CDR/CS API client
+│   ├── platforms.py            # Platform URL mapping
 │   └── requirements.txt
 ├── scripts/
 │   ├── deploy-detection.sh
@@ -435,6 +539,150 @@ qualys-ebpf/
 │   └── remove-all.sh
 └── README.md
 ```
+
+## Operator Components
+
+### AI-Powered Anomaly Detection
+
+The AI detector (`pkg/ai/detector.go`) provides multiple anomaly detection algorithms:
+
+```go
+// Create detector with configuration
+config := ai.DefaultDetectorConfig()
+config.LearningPeriod = 48 * time.Hour
+config.ZScoreThreshold = 3.0
+detector := ai.NewAIDetector(config)
+
+// Analyze feature vectors
+anomalies := detector.Analyze(ctx, &ai.FeatureVector{
+    Timestamp:     time.Now(),
+    ContainerID:   "abc123",
+    ContainerName: "web-app",
+    Features: map[string]float64{
+        "cpu_usage":     85.0,
+        "memory_usage":  92.0,
+        "network_bytes": 1500000,
+        "syscall_rate":  500,
+    },
+})
+
+// Train models periodically
+detector.TrainIsolationForest(ctx)
+detector.TrainClusters(ctx)
+```
+
+**Detection Methods:**
+| Method | Description | Use Case |
+|--------|-------------|----------|
+| Z-Score | Statistical deviation from mean | Sudden spikes |
+| IQR | Interquartile range outliers | Robust to extreme values |
+| Time Series | Moving average deviation, trend detection | Behavioral drift |
+| Isolation Forest | Tree-based anomaly isolation | Multi-dimensional anomalies |
+| K-Means Clustering | Distance from cluster centroids | Behavioral grouping |
+
+### Multi-Cluster Federation
+
+The federation manager (`pkg/federation/manager.go`) enables central policy management:
+
+```yaml
+# Register spoke cluster
+apiVersion: federation.qualys.com/v1alpha1
+kind: FederatedCluster
+metadata:
+  name: prod-us-east
+  labels:
+    environment: production
+    region: us-east
+spec:
+  endpoint: https://prod-us-east.k8s.example.com:6443
+  region: us-east-1
+  provider: aws
+  secretRef:
+    name: spoke-cluster-credentials
+    namespace: qualys-system
+```
+
+```yaml
+# Distribute policy to all production clusters
+apiVersion: federation.qualys.com/v1alpha1
+kind: FederatedTracingPolicy
+metadata:
+  name: detect-cryptominer-global
+spec:
+  template:
+    metadata:
+      name: crs-detect-cryptominer
+    spec:
+      kprobes:
+        - call: sys_execve
+          syscall: true
+          # ... policy spec
+  placement:
+    clusterSelector:
+      matchLabels:
+        environment: production
+  overrides:
+    - clusterName: prod-eu
+      patches:
+        - op: replace
+          path: /spec/kprobes/0/selectors/0/matchActions
+          value:
+            - action: Post  # Audit only in EU
+```
+
+**Cross-Cluster Attack Detection:**
+- Coordinated attacks (same attack across multiple clusters)
+- Lateral movement (reconnaissance → exploitation across clusters)
+- Supply chain indicators (cryptominer in multiple clusters)
+
+### Response Actions
+
+The response engine (`pkg/response/actions.go`) provides multiple response options:
+
+| Action | Description | Use Case |
+|--------|-------------|----------|
+| `ProcessKill` | SIGKILL to process | Immediate threat termination |
+| `ContainerKill` | Force remove container | Compromised container |
+| `ContainerStop` | Graceful container stop | Suspicious but uncertain |
+| `ContainerPause` | Suspend all processes | Forensic preservation |
+| `FileQuarantine` | Compress and isolate file | Malware isolation |
+| `ForensicsCapture` | Collect process info, logs | Incident response |
+| `NetworkIsolate` | Create deny-all NetworkPolicy | Contain lateral movement |
+| `LabelPod` | Add security labels | Tracking and alerting |
+
+### Admission Controller
+
+The admission controller (`pkg/admission/controller.go`) validates pods before deployment:
+
+```yaml
+# Default security policy
+blockPrivileged: true
+blockHostNetwork: true
+blockHostPID: true
+blockHostIPC: true
+blockedCapabilities:
+  - SYS_ADMIN
+  - SYS_PTRACE
+  - SYS_MODULE
+  - NET_ADMIN
+  - NET_RAW
+blockHostPath: true
+blockDockerSocket: true
+```
+
+### Output Integrations
+
+The integrations module (`pkg/outputs/integrations.go`) supports multiple outputs:
+
+| Output | Format | Severity Routing |
+|--------|--------|------------------|
+| Slack | Rich formatted messages | Color-coded by severity |
+| PagerDuty | Incidents | Critical/High only |
+| Microsoft Teams | MessageCard | All severities |
+| Splunk HEC | JSON events | All severities |
+| Elasticsearch | Documents | All severities |
+| Syslog | CEF format | All severities |
+| Generic Webhook | JSON POST | Configurable |
 
 ## Policy Maturity Levels
 
@@ -495,6 +743,35 @@ Key practices:
 - Priority levels (CRITICAL/HIGH/MEDIUM/LOW)
 - False positive documentation
 - Falco rule equivalents noted
+
+## Testing & Benchmarks
+
+The operator includes comprehensive unit tests and benchmarks for critical components:
+
+### Test Coverage
+
+| Package | Coverage | Tests |
+|---------|----------|-------|
+| `pkg/ai` | 75.5% | 19 |
+| `pkg/federation` | 46.6% | 24 |
+| `pkg/response` | 60.4% | 28 |
+
+### Performance Benchmarks (Apple M4)
+
+| Operation | ns/op | Allocations |
+|-----------|-------|-------------|
+| AI Analyze | 27,179 | 31 allocs |
+| Statistical Detection | 23,589 | 2 allocs |
+| Isolation Forest Score | 5,679 | 0 allocs |
+| Input Validation | 230-390 | 0 allocs |
+| Policy Hash | 519 | 12 allocs |
+
+Run tests and benchmarks:
+```bash
+cd operator
+go test ./pkg/... -v
+go test ./pkg/... -bench=. -benchmem
+```
 
 ## References
 

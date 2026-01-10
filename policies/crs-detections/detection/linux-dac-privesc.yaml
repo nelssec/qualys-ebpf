@@ -1,0 +1,54 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-linux-dac-privesc
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Potential_Privilege_Escalation_via_Linux_DAC_permissions_T1068
+    mitre.attack/technique: T1068
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect privilege escalation via Linux DAC permission manipulation
+spec:
+  kprobes:
+  - call: sys_chmod
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    - index: 1
+      type: int
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Prefix
+        values:
+        - /etc/
+        - /usr/bin/
+        - /usr/sbin/
+      - index: 1
+        operator: Mask
+        values:
+        - '4755'
+        - '4777'
+        - '6755'
+      matchActions:
+      - action: Post
+  - call: sys_fchmodat
+    syscall: true
+    args:
+    - index: 1
+      type: string
+    - index: 2
+      type: int
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: Prefix
+        values:
+        - /etc/
+        - /usr/bin/
+        - /usr/sbin/
+      matchActions:
+      - action: Post

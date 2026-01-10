@@ -1,0 +1,28 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-block-debugfs-privileged
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Debugfs_Launched_in_Privileged_Container_T1611
+    mitre.attack/technique: T1611
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: critical
+    policy.qualys.com/action: block
+  annotations:
+    description: Detect debugfs in privileged container
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /debugfs
+      matchActions:
+      - action: Sigkill

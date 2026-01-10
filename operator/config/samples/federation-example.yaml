@@ -1,0 +1,312 @@
+# Example: Multi-Cluster Federation Configuration
+# This shows how to set up a hub cluster with spoke clusters and federated policies
+
+---
+# Step 1: Create secrets for spoke cluster authentication
+# Each spoke cluster needs a service account token with cluster-admin permissions
+apiVersion: v1
+kind: Secret
+metadata:
+  name: spoke-cluster-prod-us-east
+  namespace: qualys-system
+type: Opaque
+data:
+  # Base64 encoded service account token from spoke cluster
+  token: <base64-encoded-token>
+  # Base64 encoded CA certificate from spoke cluster
+  ca.crt: <base64-encoded-ca-cert>
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: spoke-cluster-prod-us-west
+  namespace: qualys-system
+type: Opaque
+data:
+  token: <base64-encoded-token>
+  ca.crt: <base64-encoded-ca-cert>
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: spoke-cluster-prod-eu
+  namespace: qualys-system
+type: Opaque
+data:
+  token: <base64-encoded-token>
+  ca.crt: <base64-encoded-ca-cert>
+
+---
+# Step 2: Register spoke clusters with the hub
+apiVersion: federation.qualys.com/v1alpha1
+kind: FederatedCluster
+metadata:
+  name: prod-us-east
+  labels:
+    environment: production
+    region: us-east
+    provider: aws
+spec:
+  endpoint: https://prod-us-east.k8s.example.com:6443
+  region: us-east-1
+  provider: aws
+  secretRef:
+    name: spoke-cluster-prod-us-east
+    namespace: qualys-system
+  policySelectors:
+    - matchLabels:
+        policy-tier: production
+
+---
+apiVersion: federation.qualys.com/v1alpha1
+kind: FederatedCluster
+metadata:
+  name: prod-us-west
+  labels:
+    environment: production
+    region: us-west
+    provider: aws
+spec:
+  endpoint: https://prod-us-west.k8s.example.com:6443
+  region: us-west-2
+  provider: aws
+  secretRef:
+    name: spoke-cluster-prod-us-west
+    namespace: qualys-system
+  policySelectors:
+    - matchLabels:
+        policy-tier: production
+
+---
+apiVersion: federation.qualys.com/v1alpha1
+kind: FederatedCluster
+metadata:
+  name: prod-eu
+  labels:
+    environment: production
+    region: eu
+    provider: gcp
+    compliance: gdpr
+spec:
+  endpoint: https://prod-eu.k8s.example.com:6443
+  region: europe-west1
+  provider: gcp
+  secretRef:
+    name: spoke-cluster-prod-eu
+    namespace: qualys-system
+  policySelectors:
+    - matchLabels:
+        policy-tier: production
+    - matchLabels:
+        compliance: gdpr
+
+---
+# Step 3: Create federated policies that distribute to all production clusters
+
+# Federated TracingPolicy: Detect cryptominer execution across all clusters
+apiVersion: federation.qualys.com/v1alpha1
+kind: FederatedTracingPolicy
+metadata:
+  name: detect-cryptominer-global
+  labels:
+    policy-tier: production
+    threat-type: cryptominer
+spec:
+  template:
+    metadata:
+      name: crs-detect-cryptominer
+      labels:
+        qualys.com/crs-rule: "CRS-001"
+        mitre.attack/tactic: "TA0040"
+        mitre.attack/technique: "T1496"
+    spec:
+      kprobes:
+        - call: sys_execve
+          syscall: true
+          args:
+            - index: 0
+              type: string
+          selectors:
+            - matchArgs:
+                - index: 0
+                  operator: In
+                  values:
+                    - xmrig
+                    - minerd
+                    - cpuminer
+                    - ccminer
+                    - ethminer
+                    - cgminer
+                    - bfgminer
+                    - nbminer
+                    - phoenixminer
+              matchActions:
+                - action: Sigkill
+                - action: Post
+  placement:
+    clusterSelector:
+      matchLabels:
+        environment: production
+
+---
+# Federated TracingPolicy: Container breakout detection
+apiVersion: federation.qualys.com/v1alpha1
+kind: FederatedTracingPolicy
+metadata:
+  name: detect-container-breakout-global
+  labels:
+    policy-tier: production
+    threat-type: container-escape
+spec:
+  template:
+    metadata:
+      name: crs-detect-container-breakout
+      labels:
+        qualys.com/crs-rule: "CRS-005"
+        mitre.attack/tactic: "TA0004"
+        mitre.attack/technique: "T1611"
+    spec:
+      kprobes:
+        - call: sys_setns
+          syscall: true
+          args:
+            - index: 1
+              type: int
+          selectors:
+            - matchActions:
+                - action: Sigkill
+                - action: Post
+  placement:
+    clusterSelector:
+      matchLabels:
+        environment: production
+  overrides:
+    # In EU cluster, only detect (don't kill) for compliance reasons
+    - clusterName: prod-eu
+      patches:
+        - op: replace
+          path: /spec/kprobes/0/selectors/0/matchActions
+          value:
+            - action: Post
+
+---
+# Federated NetworkPolicy: Block crypto mining pools globally
+apiVersion: federation.qualys.com/v1alpha1
+kind: FederatedNetworkPolicy
+metadata:
+  name: block-crypto-pools-global
+  labels:
+    policy-tier: production
+    threat-type: cryptominer
+spec:
+  template:
+    metadata:
+      name: block-crypto-mining-pools
+      namespace: default
+      labels:
+        qualys.com/policy-type: threat-blocking
+    spec:
+      endpointSelector: {}
+      egressDeny:
+        - toFQDNs:
+            - matchPattern: "*.minexmr.com"
+            - matchPattern: "*.minergate.com"
+            - matchPattern: "*.supportxmr.com"
+            - matchPattern: "*.xmrpool.eu"
+            - matchPattern: "*.nanopool.org"
+            - matchPattern: "*.2miners.com"
+            - matchPattern: "*.f2pool.com"
+            - matchPattern: "*.antpool.com"
+            - matchPattern: "*.nicehash.com"
+          toPorts:
+            - ports:
+                - port: "443"
+                  protocol: TCP
+                - port: "80"
+                  protocol: TCP
+                - port: "3333"
+                  protocol: TCP
+                - port: "4444"
+                  protocol: TCP
+                - port: "5555"
+                  protocol: TCP
+                - port: "14444"
+                  protocol: TCP
+  placement:
+    clusterSelector:
+      matchLabels:
+        environment: production
+
+---
+# Federated TracingPolicy: GDPR-specific policy for EU cluster only
+apiVersion: federation.qualys.com/v1alpha1
+kind: FederatedTracingPolicy
+metadata:
+  name: detect-pii-exfiltration-gdpr
+  labels:
+    policy-tier: production
+    compliance: gdpr
+spec:
+  template:
+    metadata:
+      name: crs-detect-pii-exfiltration
+      labels:
+        qualys.com/compliance: "gdpr"
+    spec:
+      kprobes:
+        - call: sys_write
+          syscall: true
+          args:
+            - index: 0
+              type: fd
+            - index: 1
+              type: char_buf
+              sizeArgIndex: 2
+            - index: 2
+              type: size_t
+          selectors:
+            - matchArgs:
+                - index: 0
+                  operator: IsSocket
+            - matchBinaries:
+                - operator: NotIn
+                  values:
+                    - /usr/bin/curl
+                    - /usr/bin/wget
+              matchActions:
+                - action: Post
+  placement:
+    clusterSelector:
+      matchLabels:
+        compliance: gdpr
+
+---
+# ConfigMap for federation controller configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: federation-config
+  namespace: qualys-system
+data:
+  config.yaml: |
+    federation:
+      role: hub
+      syncInterval: 5m
+      heartbeatInterval: 30s
+      heartbeatTimeout: 2m
+      retryAttempts: 3
+      retryBackoff: 10s
+
+    ai:
+      enabled: true
+      learningPeriod: 48h
+      zScoreThreshold: 3.0
+      isolationForestTrees: 100
+      retrainingInterval: 6h
+
+    correlation:
+      enabled: true
+      windowSize: 1h
+      crossClusterEnabled: true

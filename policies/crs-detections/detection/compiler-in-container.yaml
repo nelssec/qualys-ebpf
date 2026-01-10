@@ -1,0 +1,32 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-compiler-in-container
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Compiler_executed_in_container_T1027_004
+    mitre.attack/technique: T1027.004
+    mitre.attack/tactic: defense-evasion
+    policy.qualys.com/severity: medium
+  annotations:
+    description: Detect compiler execution in container
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /gcc
+        - /g++
+        - /clang
+        - /make
+        - /cmake
+        - /go
+      matchActions:
+      - action: Post

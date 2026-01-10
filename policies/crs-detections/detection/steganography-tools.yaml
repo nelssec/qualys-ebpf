@@ -1,0 +1,30 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-steganography-tools
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Usage_of_Steganografy_tools_T1027_003
+    mitre.attack/technique: T1027.003
+    mitre.attack/tactic: defense-evasion
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect usage of steganography tools to hide data
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /steghide
+        - /stegosuite
+        - /outguess
+        - /snow
+      matchActions:
+      - action: Post

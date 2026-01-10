@@ -1,0 +1,32 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-network-utility-executed
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Network_utility_executed_T1016
+    mitre.attack/technique: T1016
+    mitre.attack/tactic: discovery
+    policy.qualys.com/severity: medium
+  annotations:
+    description: Detect network utility execution for discovery
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /ifconfig
+        - /ip
+        - /netstat
+        - /ss
+        - /route
+        - /arp
+      matchActions:
+      - action: Post

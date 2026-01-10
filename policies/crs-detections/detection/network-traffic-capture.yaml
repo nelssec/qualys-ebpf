@@ -1,0 +1,30 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-network-traffic-capture
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Network_Traffic_Capture_via_CAP_NET_RAW_T1040
+    mitre.attack/technique: T1040
+    mitre.attack/tactic: collection
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect network traffic capture
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /tcpdump
+        - /tshark
+        - /wireshark
+        - /dumpcap
+      matchActions:
+      - action: Post

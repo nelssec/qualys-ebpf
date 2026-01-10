@@ -1,0 +1,27 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-cap-sys-admin
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: CAP_SYS_ADMIN_Assigned_to_Binary
+    mitre.attack/technique: T1548
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Detect CAP_SYS_ADMIN assigned to binary
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchCapabilities:
+      - type: Effective
+        operator: In
+        values:
+        - CAP_SYS_ADMIN
+      matchActions:
+      - action: Post

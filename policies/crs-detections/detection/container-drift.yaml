@@ -1,0 +1,29 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-container-drift
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: ContainerDrift_Via_File_Creation_and_Execution_T1059_004
+    mitre.attack/technique: T1059.004
+    mitre.attack/tactic: execution
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect container drift via new file creation and execution
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Prefix
+        values:
+        - /tmp/
+        - /var/tmp/
+        - /dev/shm/
+      matchActions:
+      - action: Post

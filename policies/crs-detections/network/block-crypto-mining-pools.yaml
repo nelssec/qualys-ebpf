@@ -1,0 +1,35 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: crs-block-crypto-mining-pools
+  labels:
+    generated-by: qualys-crs
+    mitre.attack/technique: T1496
+    mitre.attack/tactic: impact
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Block outbound connections to known crypto mining pool ports
+spec:
+  endpointSelector: {}
+  egressDeny:
+    - toPorts:
+        - ports:
+            # Common mining pool ports
+            - port: "3333"
+              protocol: TCP
+            - port: "4444"
+              protocol: TCP
+            - port: "5555"
+              protocol: TCP
+            - port: "7777"
+              protocol: TCP
+            - port: "8888"
+              protocol: TCP
+            - port: "9999"
+              protocol: TCP
+            - port: "14433"
+              protocol: TCP
+            - port: "14444"
+              protocol: TCP
+            - port: "45700"
+              protocol: TCP

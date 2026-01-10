@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qualys/qualys-policy-operator/pkg/cdr"
+	"qualys-policy-operator/pkg/cdr"
 )
 
 // TracingPolicy represents a Cilium Tetragon TracingPolicy.

@@ -1,0 +1,28 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-rootkit-defense-evasion
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Defense_Evasion_via_Rootkit_T1222_002
+    mitre.attack/technique: T1222.002
+    mitre.attack/tactic: defense-evasion
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Detect rootkit-style defense evasion
+spec:
+  kprobes:
+  - call: sys_openat
+    syscall: true
+    args:
+    - index: 1
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: Prefix
+        values:
+        - /lib/modules/
+        - /boot/
+      matchActions:
+      - action: Post

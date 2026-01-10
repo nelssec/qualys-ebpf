@@ -1,0 +1,28 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-container-escape-cgroup
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Container_escape_via_cgroup_T1611
+    mitre.attack/technique: T1611
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Detect container escape via cgroup manipulation
+spec:
+  kprobes:
+  - call: sys_openat
+    syscall: true
+    args:
+    - index: 1
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: Prefix
+        values:
+        - /sys/fs/cgroup/
+        - /proc/1/root/
+      matchActions:
+      - action: Post

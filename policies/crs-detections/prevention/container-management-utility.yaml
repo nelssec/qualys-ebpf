@@ -1,0 +1,32 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-block-container-management-utility
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Container_management_utility_in_container_T1609
+    mitre.attack/technique: T1609
+    mitre.attack/tactic: execution
+    policy.qualys.com/severity: high
+    policy.qualys.com/action: block
+  annotations:
+    description: Detect container management utilities inside container
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /docker
+        - /kubectl
+        - /crictl
+        - /ctr
+        - /podman
+      matchActions:
+      - action: Sigkill

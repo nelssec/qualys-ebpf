@@ -1,0 +1,37 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: crs-block-reverse-shell-ports
+  labels:
+    generated-by: qualys-crs
+    mitre.attack/technique: T1059.004
+    mitre.attack/tactic: execution
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Block outbound connections to common reverse shell ports
+spec:
+  endpointSelector: {}
+  egressDeny:
+    - toPorts:
+        - ports:
+            # Common reverse shell and C2 ports
+            - port: "1234"
+              protocol: TCP
+            - port: "4443"
+              protocol: TCP
+            - port: "4445"
+              protocol: TCP
+            - port: "5554"
+              protocol: TCP
+            - port: "6666"
+              protocol: TCP
+            - port: "6667"
+              protocol: TCP
+            - port: "6668"
+              protocol: TCP
+            - port: "6669"
+              protocol: TCP
+            - port: "9001"
+              protocol: TCP
+            - port: "31337"
+              protocol: TCP

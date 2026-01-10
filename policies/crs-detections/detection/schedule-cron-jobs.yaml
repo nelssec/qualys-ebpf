@@ -1,0 +1,35 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-schedule-cron-jobs
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Schedule_Cron_Jobs_T1053_003
+    mitre.attack/technique: T1053.003
+    mitre.attack/tactic: persistence
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect scheduling of cron jobs for persistence
+spec:
+  kprobes:
+  - call: sys_openat
+    syscall: true
+    args:
+    - index: 1
+      type: string
+    - index: 2
+      type: int
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: Prefix
+        values:
+        - /etc/cron
+        - /var/spool/cron
+      - index: 2
+        operator: Mask
+        values:
+        - O_WRONLY
+        - O_RDWR
+      matchActions:
+      - action: Post

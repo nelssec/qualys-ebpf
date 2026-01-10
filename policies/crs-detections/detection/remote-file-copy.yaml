@@ -1,0 +1,30 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-remote-file-copy
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Launch_Remote_File_Copy_Tools_in_Container_T1021
+    mitre.attack/technique: T1021
+    mitre.attack/tactic: lateral-movement
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect remote file copy tools in container
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /ssh
+        - /scp
+        - /sftp
+        - /rsync
+      matchActions:
+      - action: Post

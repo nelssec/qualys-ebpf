@@ -1,0 +1,30 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-block-process-hiding
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Process_hiding_T1564
+    mitre.attack/technique: T1564
+    mitre.attack/tactic: defense-evasion
+    policy.qualys.com/severity: high
+    policy.qualys.com/action: block
+  annotations:
+    description: Detect process hiding techniques
+spec:
+  kprobes:
+  - call: sys_mount
+    syscall: true
+    args:
+    - index: 2
+      type: string
+    - index: 3
+      type: int
+    selectors:
+    - matchArgs:
+      - index: 2
+        operator: Equal
+        values:
+        - proc
+      matchActions:
+      - action: Sigkill

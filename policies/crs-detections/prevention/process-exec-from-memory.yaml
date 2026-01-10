@@ -1,0 +1,29 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-block-process-exec-from-memory
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Process_exec_from_memory_T1106
+    mitre.attack/technique: T1106
+    mitre.attack/tactic: execution
+    policy.qualys.com/severity: critical
+    policy.qualys.com/action: block
+  annotations:
+    description: Detect process execution from memory (memfd)
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Prefix
+        values:
+        - /proc/self/fd/
+        - /dev/fd/
+      matchActions:
+      - action: Sigkill

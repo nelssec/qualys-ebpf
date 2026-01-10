@@ -1,0 +1,34 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-block-process-hidden-mount-hidepid
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Process_hidden_using_mount_hidepid_T1564
+    mitre.attack/technique: T1564
+    mitre.attack/tactic: defense-evasion
+    policy.qualys.com/severity: high
+    policy.qualys.com/action: block
+  annotations:
+    description: Detect mount with hidepid to hide processes
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    - index: 1
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /mount
+      - index: 1
+        operator: Contains
+        values:
+        - hidepid
+      matchActions:
+      - action: Sigkill

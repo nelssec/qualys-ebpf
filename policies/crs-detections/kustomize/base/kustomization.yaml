@@ -1,0 +1,62 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: qualys-crs-policies
+
+commonLabels:
+  app.kubernetes.io/name: qualys-crs
+  app.kubernetes.io/component: security-policy
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  # Critical severity - always include
+  - ../../detection/cloud-credentials-imds.yaml
+  - ../../detection/container-escape-cgroup.yaml
+  - ../../detection/container-escape-runtime-socket.yaml
+  - ../../detection/container-escape-docker-socket.yaml
+  - ../../detection/cryptominer-execution.yaml
+  - ../../detection/netcat-reverse-shell.yaml
+  - ../../detection/process-exec-from-memory.yaml
+  - ../../detection/debugfs-privileged.yaml
+  - ../../detection/sudo-privesc.yaml
+  - ../../detection/polkit-privesc.yaml
+  - ../../detection/cap-sys-admin.yaml
+  - ../../detection/gdb-ptrace-privesc.yaml
+  - ../../detection/insmod-container.yaml
+  - ../../detection/stop-antimalware.yaml
+  - ../../detection/rootkit-defense-evasion.yaml
+  - ../../detection/enlightenment-privesc.yaml
+  - ../../detection/cap-chown-fowner-privesc.yaml
+  - ../../detection/process-capabilities-privesc.yaml
+  - ../../detection/db-program-spawned.yaml
+  - ../../detection/exploit-vsftpd.yaml
+
+  # High severity
+  - ../../detection/credential-access-bash-history.yaml
+  - ../../detection/find-aws-credentials.yaml
+  - ../../detection/search-private-keys.yaml
+  - ../../detection/python-suspicious-args.yaml
+  - ../../detection/container-drift.yaml
+  - ../../detection/network-scanning.yaml
+  - ../../detection/suid-binary-execution.yaml
+  - ../../detection/clear-system-logs.yaml
+  - ../../detection/process-hiding.yaml
+  - ../../detection/process-hidden-mount-hidepid.yaml
+  - ../../detection/steganography-tools.yaml
+  - ../../detection/curl-socks-proxy.yaml
+  - ../../detection/schedule-cron-jobs.yaml
+  - ../../detection/local-account-password-modified.yaml
+  - ../../detection/k8s-service-account-token.yaml
+  - ../../detection/remote-file-copy.yaml
+  - ../../detection/ingress-file-copy.yaml
+  - ../../detection/container-management-utility.yaml
+  - ../../detection/automated-collection.yaml
+  - ../../detection/network-traffic-capture.yaml
+  - ../../detection/gdb-container.yaml
+  - ../../detection/linux-dac-privesc.yaml
+
+  # Network policies
+  - ../../network/block-imds.yaml
+  - ../../network/block-crypto-mining-pools.yaml
+  - ../../network/block-reverse-shell-ports.yaml

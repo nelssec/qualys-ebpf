@@ -1,0 +1,124 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-high-security-namespace
+  labels:
+    generated-by: qualys-crs
+    policy.qualys.com/scope: namespace
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Comprehensive security policy for high-security namespaces
+spec:
+  kprobes:
+    # Block container escape attempts
+    - call: sys_openat
+      syscall: true
+      args:
+        - index: 1
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 1
+              operator: Postfix
+              values:
+                - /docker.sock
+                - /containerd.sock
+                - /crio.sock
+          matchNamespaces:
+            - namespace: Uts
+              operator: NotIn
+              values:
+                - host_ns
+          matchActions:
+            - action: Sigkill
+
+    # Block privilege escalation
+    - call: sys_execve
+      syscall: true
+      args:
+        - index: 0
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Postfix
+              values:
+                - /sudo
+                - /su
+                - /pkexec
+                - /doas
+          matchNamespaces:
+            - namespace: Uts
+              operator: NotIn
+              values:
+                - host_ns
+          matchActions:
+            - action: Sigkill
+
+    # Block debuggers/profilers
+    - call: sys_execve
+      syscall: true
+      args:
+        - index: 0
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Postfix
+              values:
+                - /gdb
+                - /strace
+                - /ltrace
+                - /ptrace
+          matchNamespaces:
+            - namespace: Uts
+              operator: NotIn
+              values:
+                - host_ns
+          matchActions:
+            - action: Sigkill
+
+    # Block network scanning
+    - call: sys_execve
+      syscall: true
+      args:
+        - index: 0
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Postfix
+              values:
+                - /nmap
+                - /masscan
+                - /zmap
+          matchNamespaces:
+            - namespace: Uts
+              operator: NotIn
+              values:
+                - host_ns
+          matchActions:
+            - action: Sigkill
+
+    # Block crypto miners
+    - call: sys_execve
+      syscall: true
+      args:
+        - index: 0
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Postfix
+              values:
+                - /xmrig
+                - /minerd
+                - /cpuminer
+                - /cgminer
+          matchNamespaces:
+            - namespace: Uts
+              operator: NotIn
+              values:
+                - host_ns
+          matchActions:
+            - action: Sigkill

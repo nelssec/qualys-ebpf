@@ -1,0 +1,27 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-container-escape-docker-socket
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Container_escape_using_docker_socket_T1611
+    mitre.attack/technique: T1611
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Detect container escape via mounted docker socket
+spec:
+  kprobes:
+  - call: sys_connect
+    syscall: true
+    args:
+    - index: 1
+      type: sockaddr
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: Postfix
+        values:
+        - /var/run/docker.sock
+      matchActions:
+      - action: Post

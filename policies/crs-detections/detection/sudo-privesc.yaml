@@ -1,0 +1,35 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-sudo-privesc
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Sudo_Potential_Privilege_Escalation_T1548_003
+    mitre.attack/technique: T1548.003
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: critical
+  annotations:
+    description: Detect potential sudo privilege escalation
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    - index: 1
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /sudo
+      - index: 1
+        operator: Contains
+        values:
+        - -u root
+        - EDITOR=
+        - VISUAL=
+      matchActions:
+      - action: Post

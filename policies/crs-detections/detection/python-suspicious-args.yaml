@@ -1,0 +1,41 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-python-suspicious-args
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Python_executed_with_suspicious_arguments_T1059_006
+    mitre.attack/technique: T1059.006
+    mitre.attack/tactic: execution
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect Python with suspicious arguments
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    - index: 1
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /python
+        - /python3
+        - /python2
+      - index: 1
+        operator: Contains
+        values:
+        - socket
+        - subprocess
+        - pty.spawn
+        - base64
+        - exec(
+        - eval(
+        - import os
+      matchActions:
+      - action: Post

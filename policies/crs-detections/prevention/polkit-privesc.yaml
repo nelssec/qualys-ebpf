@@ -1,0 +1,28 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-block-polkit-privesc
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Polkit_Local_Privilege_Escalation_T1068
+    mitre.attack/technique: T1068
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: critical
+    policy.qualys.com/action: block
+  annotations:
+    description: Detect Polkit privilege escalation
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /pkexec
+      matchActions:
+      - action: Sigkill

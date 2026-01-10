@@ -1,0 +1,30 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-suid-binary-execution
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Privilege_Escalation_Via_SUID_Binary_Execution_T1548_001
+    mitre.attack/technique: T1548.001
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect SUID binary execution for privilege escalation
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /sudo
+        - /su
+        - /doas
+        - /pkexec
+      matchActions:
+      - action: Post

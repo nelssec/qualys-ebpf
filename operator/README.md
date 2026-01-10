@@ -1,65 +1,104 @@
 # Qualys CDR Policy Operator
 
-Automatically generates Tetragon TracingPolicies and Cilium NetworkPolicies from Qualys CDR events and threat intelligence feeds.
+Enterprise-grade Kubernetes runtime security operator with AI-powered anomaly detection, multi-cluster federation, and comprehensive response capabilities.
 
 ## Features
 
+### Core Capabilities
 - **CDR Event Processing**: Fetches detection events and generates blocking policies
 - **Dynamic IOC Extraction**: Extracts IPs, domains, ports from events
 - **Threat Intel Integration**: Downloads and applies public threat feeds
 - **IP Reputation Checking**: Validates IPs against AbuseIPDB and blocklists
 - **Dual Policy Output**: Generates both Tetragon (syscall) and Cilium (network) policies
 
+### Advanced Features
+- **AI Anomaly Detection**: Isolation forest, k-means clustering, z-score, time series analysis
+- **Behavioral Profiling**: 48hr learning period with anomaly scoring
+- **Multi-Cluster Federation**: Hub-spoke architecture with cross-cluster correlation
+- **Container Response Actions**: Kill, stop, pause, quarantine, forensics capture
+- **Kubernetes Admission Controller**: Pre-deployment pod security validation
+- **DNS Threat Monitoring**: DGA detection, malicious domain blocking
+- **Attack Chain Correlation**: 7 built-in patterns with MITRE ATT&CK mapping
+- **SIEM/SOAR Integrations**: Slack, PagerDuty, Teams, Splunk, Elasticsearch, Syslog
+
 ## Architecture
 
 ```
-                                    ┌─────────────────────┐
-                                    │   Threat Intel      │
-                                    │   Feeds             │
-                                    │   - Feodo Tracker   │
-                                    │   - Tor Exit Nodes  │
-                                    │   - Emerging Threats│
-                                    │   - AbuseIPDB       │
-                                    └──────────┬──────────┘
-                                               │
-┌─────────────────────┐                        │
-│   Qualys CDR API    │                        │
-│   /cdr-api/rest/v1  │                        │
-└──────────┬──────────┘                        │
-           │                                   │
-           v                                   v
-┌──────────────────────────────────────────────────────────┐
-│                    Policy Operator                        │
-│  ┌────────────────┐  ┌────────────────┐  ┌─────────────┐ │
-│  │ CDR Client     │  │ Network        │  │ Reputation  │ │
-│  │ - Fetch events │  │ Blocker        │  │ Checker     │ │
-│  │ - Parse threats│  │ - Extract IOCs │  │ - Feed sync │ │
-│  └───────┬────────┘  │ - Build lists  │  │ - IP lookup │ │
-│          │           └───────┬────────┘  └──────┬──────┘ │
-│          v                   v                  v         │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │              Policy Generator                       │  │
-│  │  - TracingPolicy (Tetragon)                        │  │
-│  │  - CiliumNetworkPolicy                             │  │
-│  └────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────┘
-           │
-           v
-┌──────────────────────────────────────────────────────────┐
-│                   Kubernetes Cluster                      │
-│  ┌────────────────────┐    ┌────────────────────┐        │
-│  │  TracingPolicy     │    │  CiliumNetworkPolicy│        │
-│  │  (sys_connect,     │    │  (egressDeny,       │        │
-│  │   sys_execve)      │    │   toCIDR, toFQDNs)  │        │
-│  └─────────┬──────────┘    └──────────┬─────────┘        │
-│            │                          │                   │
-│            v                          v                   │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │              eBPF Enforcement                       │  │
-│  │  Tetragon: Syscall blocking (Sigkill)              │  │
-│  │  Cilium:   Network blocking (Drop)                 │  │
-│  └────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           External Sources                                   │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐ │
+│  │  Qualys CDR API │  │  Threat Intel   │  │  Spoke Clusters (Events)    │ │
+│  │  /cdr-api/rest  │  │  Feeds (5+)     │  │  Heartbeats, Detections     │ │
+│  └────────┬────────┘  └────────┬────────┘  └──────────────┬──────────────┘ │
+└───────────┼─────────────────────┼──────────────────────────┼────────────────┘
+            │                     │                          │
+            v                     v                          v
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Policy Operator                                      │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                        Input Processing                               │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │  │
+│  │  │ CDR Client   │  │ Threat Intel │  │ DNS Monitor  │  │ Admission │ │  │
+│  │  │ Events       │  │ Reputation   │  │ DGA Detect   │  │ Webhook   │ │  │
+│  │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └─────┬─────┘ │  │
+│  └─────────┼─────────────────┼─────────────────┼────────────────┼───────┘  │
+│            │                 │                 │                │          │
+│            v                 v                 v                v          │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                        Analysis Engine                                │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │  │
+│  │  │ AI Detector  │  │ Behavioral   │  │ Correlation  │  │ Drift     │ │  │
+│  │  │ - Isolation  │  │ Profiler     │  │ Engine       │  │ Detector  │ │  │
+│  │  │   Forest     │  │ - Learning   │  │ - 7 Patterns │  │ - Exec    │ │  │
+│  │  │ - K-Means    │  │ - Anomaly    │  │ - MITRE Map  │  │   Hashes  │ │  │
+│  │  │ - Z-Score    │  │   Scoring    │  │ - Cross-     │  │ - Image   │ │  │
+│  │  │ - Time Series│  │              │  │   Cluster    │  │   Baseline│ │  │
+│  │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └─────┬─────┘ │  │
+│  └─────────┼─────────────────┼─────────────────┼────────────────┼───────┘  │
+│            │                 │                 │                │          │
+│            v                 v                 v                v          │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                        Response Engine                                │  │
+│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────┐ ┌─────────┐ ┌───────┐ │  │
+│  │  │ Kill   │ │ Stop   │ │ Pause  │ │Quarantine│ │Forensics│ │Network│ │  │
+│  │  │Process │ │Container│ │Container│ │  File   │ │ Capture │ │Isolate│ │  │
+│  │  └────────┘ └────────┘ └────────┘ └──────────┘ └─────────┘ └───────┘ │  │
+│  └───────────────────────────────────┬──────────────────────────────────┘  │
+│                                      │                                      │
+│  ┌───────────────────────────────────┴──────────────────────────────────┐  │
+│  │                        Output Layer                                   │  │
+│  │  ┌───────┐ ┌─────────┐ ┌───────┐ ┌────────┐ ┌───────────┐ ┌────────┐ │  │
+│  │  │ Slack │ │PagerDuty│ │ Teams │ │ Splunk │ │Elasticsearch│ │ Syslog │ │  │
+│  │  └───────┘ └─────────┘ └───────┘ └────────┘ └───────────┘ └────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                        Federation Manager                             │  │
+│  │  Hub Mode: Policy Distribution, Event Aggregation, Cross-Cluster     │  │
+│  │  Spoke Mode: Policy Sync, Event Forwarding, Heartbeat                │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       v
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Kubernetes Cluster                                   │
+│  ┌───────────────────┐  ┌───────────────────┐  ┌─────────────────────────┐ │
+│  │  TracingPolicy    │  │ CiliumNetworkPolicy│  │  Federation CRDs       │ │
+│  │  (Tetragon)       │  │ (CNI-level)        │  │  FederatedCluster      │ │
+│  │  - sys_execve     │  │ - egressDeny       │  │  FederatedTracingPolicy│ │
+│  │  - sys_connect    │  │ - toCIDR           │  │  FederatedNetworkPolicy│ │
+│  │  - sys_write      │  │ - toFQDNs          │  │                        │ │
+│  └─────────┬─────────┘  └─────────┬─────────┘  └────────────────────────┘ │
+│            │                      │                                        │
+│            v                      v                                        │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │                    eBPF Enforcement (Tetragon + Cilium)               │ │
+│  │  - Syscall interception and blocking (Sigkill, Override)             │ │
+│  │  - Network filtering (L3/L4/L7, FQDN blocking)                       │ │
+│  │  - LSM hooks for persistent enforcement                              │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start
@@ -218,3 +257,254 @@ Done.
 3. **Review Policies**: Inspect generated policies before applying
 4. **Rate Limits**: AbuseIPDB has API rate limits; use caching
 5. **Policy Size**: Threat intel blocklists are capped at 1000 IPs
+
+## Package Reference
+
+### AI Anomaly Detection (`pkg/ai/`)
+
+```go
+import "github.com/qualys/qualys-ebpf/operator/pkg/ai"
+
+// Create detector
+config := ai.DefaultDetectorConfig()
+detector := ai.NewAIDetector(config)
+
+// Analyze features
+anomalies := detector.Analyze(ctx, &ai.FeatureVector{
+    Features: map[string]float64{
+        "cpu_usage": 95.0,
+        "syscalls":  1000,
+    },
+})
+
+// Train models
+detector.TrainIsolationForest(ctx)
+detector.TrainClusters(ctx)
+```
+
+**Detection Methods:**
+- **Z-Score**: Statistical deviation (threshold: 3.0)
+- **IQR**: Interquartile range outliers
+- **Isolation Forest**: Tree-based isolation scoring
+- **K-Means**: Distance from cluster centroids
+- **Time Series**: Moving average and trend analysis
+
+### Behavioral Profiling (`pkg/behavior/`)
+
+```go
+import "github.com/qualys/qualys-ebpf/operator/pkg/behavior"
+
+profiler := behavior.NewProfiler(48 * time.Hour)  // 48hr learning
+
+// Process events
+profiler.RecordProcess(containerID, processEvent)
+profiler.RecordNetwork(containerID, networkEvent)
+profiler.RecordFile(containerID, fileEvent)
+
+// Check for anomalies
+score, anomalies := profiler.CheckBehavior(containerID, event)
+```
+
+### Multi-Cluster Federation (`pkg/federation/`)
+
+```go
+import "github.com/qualys/qualys-ebpf/operator/pkg/federation"
+
+// Hub cluster
+hub := federation.NewFederationManager(&federation.Cluster{
+    Role: federation.ClusterRoleHub,
+})
+hub.RegisterSpoke(spokeCluster)
+hub.CreatePolicy(federatedPolicy)
+hub.SyncPolicies(ctx)
+
+// Spoke cluster
+spoke := federation.NewFederationManager(&federation.Cluster{
+    Role: federation.ClusterRoleSpoke,
+})
+spoke.ConnectToHub(hubEndpoint, token)
+spoke.SendHeartbeat(ctx)
+```
+
+**Federation CRDs:**
+- `FederatedCluster`: Spoke cluster registration
+- `FederatedTracingPolicy`: Distributed TracingPolicy
+- `FederatedNetworkPolicy`: Distributed CiliumNetworkPolicy
+
+### Response Actions (`pkg/response/`)
+
+```go
+import "github.com/qualys/qualys-ebpf/operator/pkg/response"
+
+executor := response.NewResponseExecutor()
+
+// Execute actions
+executor.KillProcess(pid)
+executor.StopContainer(containerID)
+executor.PauseContainer(containerID)
+executor.QuarantineFile(filepath, destDir)
+executor.CaptureForensics(containerID, outputDir)
+executor.IsolateNetwork(namespace, podName)
+```
+
+### DNS Monitoring (`pkg/dns/`)
+
+```go
+import "github.com/qualys/qualys-ebpf/operator/pkg/dns"
+
+monitor := dns.NewDNSMonitor(true)  // blocking enabled
+
+// Load threat feeds
+monitor.LoadThreatFeed(ctx, feedURL, "malware")
+
+// Process queries
+blocked, reason, threat := monitor.ProcessQuery(&dns.DNSQuery{
+    QueryName: "malicious.example.com",
+})
+
+// Generate blocking policies
+policy := monitor.GenerateCiliumDNSPolicy(blockedDomains)
+```
+
+### Correlation Engine (`pkg/correlation/`)
+
+```go
+import "github.com/qualys/qualys-ebpf/operator/pkg/correlation"
+
+engine := correlation.NewCorrelationEngine()
+engine.LoadDefaultPatterns()
+
+// Process events
+chains := engine.ProcessEvent(securityEvent)
+
+// Check for attack chains
+for _, chain := range chains {
+    fmt.Printf("Attack: %s (confidence: %.2f)\n",
+        chain.Type, chain.Confidence)
+    fmt.Printf("MITRE: %v\n", chain.MitreTechniques)
+}
+```
+
+**Built-in Attack Patterns:**
+1. Container Breakout (T1611 → T1068 → T1059)
+2. Cryptominer Deployment (T1105 → T1059 → T1496)
+3. Credential Theft (T1552 → T1041)
+4. Reverse Shell (T1071 → T1059.004)
+5. Reconnaissance to Lateral Movement (T1046 → T1021)
+6. Persistence Establishment (T1548 → T1053)
+7. Defense Evasion Chain (T1070 → T1564)
+
+### Admission Controller (`pkg/admission/`)
+
+```go
+import "github.com/qualys/qualys-ebpf/operator/pkg/admission"
+
+controller := admission.NewAdmissionController()
+controller.LoadDefaultPolicies()
+
+// Add custom policy
+controller.AddPolicy(&admission.AdmissionPolicy{
+    Name:            "strict-security",
+    BlockPrivileged: true,
+    BlockHostNetwork: true,
+    BlockedCapabilities: []string{"SYS_ADMIN", "SYS_PTRACE"},
+})
+
+// Start webhook server
+controller.StartServer(ctx, ":8443", certFile, keyFile)
+```
+
+### Output Integrations (`pkg/outputs/`)
+
+```go
+import "github.com/qualys/qualys-ebpf/operator/pkg/outputs"
+
+// Slack
+slack := outputs.NewSlackOutput(webhookURL, "#security-alerts")
+slack.Send(event)
+
+// PagerDuty
+pagerduty := outputs.NewPagerDutyOutput(routingKey)
+pagerduty.Send(event)  // Only critical/high
+
+// Splunk HEC
+splunk := outputs.NewSplunkHECOutput(hecURL, token, "main", "qualys:crs")
+splunk.Send(event)
+
+// Elasticsearch
+es := outputs.NewElasticsearchOutput(esURL, "security-events")
+es.Send(event)
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `QUALYS_USERNAME` | Yes | Qualys API username |
+| `QUALYS_PASSWORD` | Yes | Qualys API password |
+| `QUALYS_GATEWAY_URL` | No | Gateway URL (default: US2) |
+| `ABUSEIPDB_API_KEY` | No | AbuseIPDB API key |
+| `SLACK_WEBHOOK_URL` | No | Slack webhook URL |
+| `PAGERDUTY_ROUTING_KEY` | No | PagerDuty routing key |
+| `SPLUNK_HEC_URL` | No | Splunk HEC endpoint |
+| `SPLUNK_HEC_TOKEN` | No | Splunk HEC token |
+| `ELASTICSEARCH_URL` | No | Elasticsearch endpoint |
+| `FEDERATION_ROLE` | No | `hub` or `spoke` |
+| `FEDERATION_HUB_URL` | No | Hub endpoint (spoke mode) |
+
+## Testing & Benchmarks
+
+Run unit tests and benchmarks:
+
+```bash
+go test ./pkg/... -v -cover
+go test ./pkg/... -bench=. -benchmem
+```
+
+### Coverage
+
+| Package | Coverage | Tests |
+|---------|----------|-------|
+| `pkg/ai` | 75.5% | 19 |
+| `pkg/federation` | 46.6% | 24 |
+| `pkg/response` | 60.4% | 28 |
+
+### Key Benchmarks
+
+| Operation | Performance | Memory |
+|-----------|-------------|--------|
+| AI Analyze | 27μs | 17KB |
+| Isolation Forest Score | 5.7μs | 0B |
+| K-Means Clustering | 1.6ms | 248KB |
+| Cross-Cluster Correlation | 2.3μs | 2.5KB |
+| Input Validation | 230-390ns | 0B |
+
+## Prometheus Metrics
+
+The operator exposes Prometheus metrics at `/metrics`:
+
+```
+# AI Detection
+qualys_ai_anomalies_total
+qualys_ai_containers_learning
+qualys_ai_containers_ready
+
+# Federation
+qualys_federation_clusters_total
+qualys_federation_clusters_healthy
+qualys_federation_syncs_total
+qualys_federation_syncs_failed
+
+# Admission
+qualys_admission_total
+qualys_admission_allowed
+qualys_admission_denied
+
+# Response Actions
+qualys_response_actions_total{action="kill|stop|pause|quarantine"}
+qualys_response_actions_failed
+
+# Correlation
+qualys_correlation_chains_detected
+qualys_correlation_events_processed
+```

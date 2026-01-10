@@ -1,0 +1,51 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: qualys-crs-prod
+
+namespace: qualys-system
+
+commonLabels:
+  environment: prod
+
+# In production, use the prevention (Sigkill) policies
+resources:
+  # Critical severity - enforcement enabled
+  - ../../../prevention/cloud-credentials-imds.yaml
+  - ../../../prevention/container-escape-cgroup.yaml
+  - ../../../prevention/container-escape-runtime-socket.yaml
+  - ../../../prevention/container-escape-docker-socket.yaml
+  - ../../../prevention/cryptominer-execution.yaml
+  - ../../../prevention/netcat-reverse-shell.yaml
+  - ../../../prevention/process-exec-from-memory.yaml
+  - ../../../prevention/debugfs-privileged.yaml
+  - ../../../prevention/insmod-container.yaml
+  - ../../../prevention/stop-antimalware.yaml
+  - ../../../prevention/rootkit-defense-evasion.yaml
+  - ../../../prevention/db-program-spawned.yaml
+  - ../../../prevention/exploit-vsftpd.yaml
+
+  # High severity - enforcement enabled selectively
+  - ../../../prevention/credential-access-bash-history.yaml
+  - ../../../prevention/find-aws-credentials.yaml
+  - ../../../prevention/search-private-keys.yaml
+  - ../../../prevention/container-drift.yaml
+  - ../../../prevention/network-scanning.yaml
+
+  # Network policies - always enforced
+  - ../../../network/block-imds.yaml
+  - ../../../network/block-crypto-mining-pools.yaml
+  - ../../../network/block-reverse-shell-ports.yaml
+  - ../../../network/block-tor-exit-nodes.yaml
+
+patches:
+  - target:
+      kind: TracingPolicy
+    patch: |-
+      - op: add
+        path: /metadata/labels/environment
+        value: prod
+      - op: add
+        path: /metadata/annotations/policy.qualys.com~1enforcement-mode
+        value: full-enforcement

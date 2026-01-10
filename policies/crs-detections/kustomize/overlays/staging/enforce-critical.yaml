@@ -1,0 +1,78 @@
+# Override critical policies to use Sigkill in staging
+# This file patches the base detection policies to use enforcement
+
+# Container escape - always block
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-container-escape-cgroup
+spec:
+  kprobes:
+    - call: sys_openat
+      syscall: true
+      args:
+        - index: 1
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 1
+              operator: Prefix
+              values:
+                - /sys/fs/cgroup/
+                - /proc/1/root/
+          matchActions:
+            - action: Sigkill
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-container-escape-runtime-socket
+spec:
+  kprobes:
+    - call: sys_openat
+      syscall: true
+      args:
+        - index: 1
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 1
+              operator: Postfix
+              values:
+                - /docker.sock
+                - /containerd.sock
+                - /crio.sock
+                - /dockershim.sock
+                - /containerd/containerd.sock
+          matchActions:
+            - action: Sigkill
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-cryptominer-execution
+spec:
+  kprobes:
+    - call: sys_execve
+      syscall: true
+      args:
+        - index: 0
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Postfix
+              values:
+                - /xmrig
+                - /minerd
+                - /cpuminer
+                - /cgminer
+                - /bfgminer
+                - /ethminer
+                - /nbminer
+                - /t-rex
+                - /gminer
+                - /phoenixminer
+          matchActions:
+            - action: Sigkill

@@ -1,0 +1,30 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-block-process-capability-enum
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Process_Capability_Enumeration_T1057
+    mitre.attack/technique: T1057
+    mitre.attack/tactic: discovery
+    policy.qualys.com/severity: medium
+    policy.qualys.com/action: block
+  annotations:
+    description: Detect process capability enumeration
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /capsh
+        - /getcap
+        - /getpcaps
+      matchActions:
+      - action: Sigkill

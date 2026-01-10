@@ -1,0 +1,33 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crs-block-gdb-ptrace-privesc
+  labels:
+    generated-by: qualys-crs
+    qualys.com/rule-id: Privilege_Escalation_via_GDB_CAP_SYS_PTRACE_T1055_T1068
+    mitre.attack/technique: T1055
+    mitre.attack/tactic: privilege-escalation
+    policy.qualys.com/severity: critical
+    policy.qualys.com/action: block
+  annotations:
+    description: Detect GDB with CAP_SYS_PTRACE for privilege escalation
+spec:
+  kprobes:
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /gdb
+      matchCapabilities:
+      - type: Effective
+        operator: In
+        values:
+        - CAP_SYS_PTRACE
+      matchActions:
+      - action: Sigkill

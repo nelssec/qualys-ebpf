@@ -338,6 +338,132 @@ With automated policy generation:
 Compare to manual response:
 - **MTTR**: Hours to days
 
+## Real-Time Blocking with Webhooks
+
+For sub-second response times, deploy the webhook server to receive CDR events in real-time:
+
+```mermaid
+sequenceDiagram
+    participant Attacker
+    participant Container
+    participant Qualys CDR
+    participant Webhook Server
+    participant Tetragon
+
+    Attacker->>Container: Malicious activity
+    Container->>Qualys CDR: Detection (ms)
+    Qualys CDR->>Webhook Server: POST /webhook/cdr
+    Webhook Server->>Webhook Server: Extract IOCs
+    Webhook Server->>Webhook Server: Check reputation
+    Webhook Server->>Tetragon: kubectl apply
+    Note over Tetragon: Policy active
+    Attacker->>Container: Repeat attempt
+    Tetragon->>Attacker: SIGKILL
+```
+
+### Webhook Server Architecture
+
+```mermaid
+flowchart TB
+    subgraph External["External Sources"]
+        CDR["Qualys CDR<br/>Webhook"]
+        API["Manual API<br/>POST /api/block"]
+    end
+
+    subgraph Server["Webhook Server :8080"]
+        Auth["HMAC Signature<br/>Verification"]
+        Extract["IOC Extraction<br/>- IPs<br/>- Ports<br/>- Domains"]
+        Rep["Reputation Check<br/>- AbuseIPDB<br/>- Threat Feeds"]
+        Gen["Policy Generator"]
+    end
+
+    subgraph Output["Output"]
+        File["Policy Files<br/>/policies/*.yaml"]
+        Kubectl["kubectl apply"]
+        Metrics["Prometheus<br/>/metrics"]
+    end
+
+    CDR --> Auth --> Extract --> Rep --> Gen
+    API --> Extract
+    Gen --> File
+    Gen --> Kubectl
+    Server --> Metrics
+```
+
+### Webhook Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/webhook/cdr` | POST | Receive Qualys CDR events |
+| `/api/block` | POST | Manual IP/port blocking |
+| `/api/unblock` | POST | Remove blocks |
+| `/health` | GET | Health check |
+| `/metrics` | GET | Prometheus metrics |
+| `/status` | GET | Current block status |
+
+### Manual Blocking API
+
+```bash
+# Block specific IPs
+curl -X POST http://webhook:8080/api/block \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "ip",
+    "values": ["1.2.3.4", "5.6.7.8"],
+    "reason": "C2 communication detected",
+    "action": "Sigkill"
+  }'
+
+# Block suspicious ports
+curl -X POST http://webhook:8080/api/block \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "port",
+    "values": ["4444", "6666"],
+    "reason": "Reverse shell ports"
+  }'
+
+# Check status
+curl http://webhook:8080/status
+```
+
+### Configuring Qualys Webhook
+
+In Qualys Console:
+1. Go to **TotalCloud > Settings > Integrations**
+2. Add new **Webhook** integration
+3. Set URL: `https://qualys-webhook.example.com/webhook/cdr`
+4. Set secret for HMAC signature verification
+5. Select event types: Container threats, CDR detections
+
+### Response Time Comparison
+
+```mermaid
+gantt
+    title Response Time: Polling vs Webhook
+    dateFormat X
+    axisFormat %s
+
+    section Polling (1hr)
+    Detection       :0, 1
+    Wait for poll   :1, 3600
+    Generate policy :3600, 3610
+    Apply           :3610, 3615
+
+    section Webhook
+    Detection       :0, 1
+    Webhook POST    :1, 2
+    Generate policy :2, 3
+    Apply           :3, 4
+```
+
+| Metric | Polling (1hr) | Webhook |
+|--------|---------------|---------|
+| Detection to policy | ~60 min | ~3 sec |
+| Attack window | Large | Minimal |
+| Resource usage | Lower | Higher |
+| Reliability | Higher | Depends on uptime |
+
 ## Conclusion
 
 Automated threat response transforms container security from reactive to proactive. By connecting Qualys CDR detection to Tetragon enforcement through an automated operator, organizations can:
