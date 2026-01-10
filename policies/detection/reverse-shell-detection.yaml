@@ -1,0 +1,78 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: reverse-shell-detection
+  labels:
+    app.kubernetes.io/name: qualys-threat-detection
+    threat.qualys.com/category: execution
+    mitre.attack/tactic: execution
+    mitre.attack/technique: T1059
+spec:
+  kprobes:
+  # Detect common reverse shell patterns via execve
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    # Bash reverse shells
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/bash"
+        - "/sh"
+        - "/zsh"
+        - "/dash"
+      matchActions:
+      - action: Post
+        rateLimit: "1m"
+    # Python reverse shells
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/python"
+        - "/python3"
+        - "/python2"
+      matchActions:
+      - action: Post
+        rateLimit: "1m"
+    # Netcat and socat
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/nc"
+        - "/ncat"
+        - "/netcat"
+        - "/socat"
+      matchActions:
+      - action: Post
+    # Perl/Ruby reverse shells
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/perl"
+        - "/ruby"
+        - "/php"
+      matchActions:
+      - action: Post
+        rateLimit: "1m"
+
+  # Monitor socket connections for outbound shells
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "DPortPriv"
+      matchActions:
+      - action: Post

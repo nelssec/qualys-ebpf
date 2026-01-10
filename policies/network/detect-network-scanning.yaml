@@ -1,0 +1,65 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: detect-network-scanning
+  labels:
+    app.kubernetes.io/name: qualys-network-security
+    threat.qualys.com/category: discovery
+    mitre.attack/tactic: discovery
+    mitre.attack/technique: T1046
+spec:
+  kprobes:
+  # Detect raw socket creation (used for port scanning)
+  - call: "sys_socket"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "int"
+    - index: 2
+      type: "int"
+    selectors:
+    # SOCK_RAW socket creation
+    - matchArgs:
+      - index: 1
+        operator: "Equal"
+        values:
+        - "3"  # SOCK_RAW
+      matchActions:
+      - action: Sigkill
+
+  # Block nmap and scanning tools
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/nmap"
+        - "/masscan"
+        - "/zmap"
+        - "/unicornscan"
+        - "/hping"
+        - "/hping3"
+        - "/netdiscover"
+        - "/arp-scan"
+        - "/fping"
+      matchActions:
+      - action: Sigkill
+
+  # Detect rapid connection attempts (port scan behavior)
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    # Log high-frequency connection attempts
+    - matchActions:
+      - action: Post
+        rateLimit: "100ms"  # Rate limit to detect bursts

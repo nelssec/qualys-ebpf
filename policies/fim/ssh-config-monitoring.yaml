@@ -1,0 +1,27 @@
+apiVersion: qualys.com/v1
+kind: FimPolicy
+metadata:
+  name: ssh-config-write
+  labels:
+    app.kubernetes.io/name: qualys-fim
+    threat.qualys.com/category: credential-access
+spec:
+  base-policy: "file-write"
+  action: "audit"
+  monitor-paths:
+    - "/etc/ssh"
+    - "/root/.ssh"
+---
+apiVersion: qualys.com/v1
+kind: FimPolicy
+metadata:
+  name: ssh-authorized-keys
+  labels:
+    app.kubernetes.io/name: qualys-fim
+    threat.qualys.com/category: persistence
+spec:
+  base-policy: "file-write-diff"
+  action: "audit"
+  monitor-paths:
+    - "/root/.ssh/authorized_keys"
+    - "/home"

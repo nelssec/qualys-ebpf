@@ -1,0 +1,71 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: block-reverse-shells
+  labels:
+    app.kubernetes.io/name: qualys-threat-prevention
+    threat.qualys.com/category: execution
+    threat.qualys.com/severity: critical
+    mitre.attack/tactic: execution
+    mitre.attack/technique: T1059
+spec:
+  kprobes:
+  # Block netcat execution (common reverse shell tool)
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/nc"
+        - "/ncat"
+        - "/netcat"
+        - "/nc.traditional"
+        - "/nc.openbsd"
+      matchActions:
+      - action: Sigkill
+
+  # Block socat execution
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/socat"
+      matchActions:
+      - action: Sigkill
+
+  # Block web server processes from spawning shells
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchBinaries:
+        operator: In
+        values:
+        - "/usr/sbin/apache2"
+        - "/usr/sbin/httpd"
+        - "/usr/sbin/nginx"
+        - "/usr/bin/php"
+        - "/usr/bin/php-fpm"
+      matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/sh"
+        - "/bash"
+        - "/dash"
+        - "/zsh"
+      matchActions:
+      - action: Sigkill

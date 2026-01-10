@@ -1,0 +1,80 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: detect-c2-beaconing
+  labels:
+    app.kubernetes.io/name: qualys-network-security
+    threat.qualys.com/category: command-and-control
+    mitre.attack/tactic: command-and-control
+    mitre.attack/technique: T1071
+spec:
+  kprobes:
+  # Monitor HTTP/HTTPS connections for beacon detection
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    # Log all HTTPS connections (analyze for patterns)
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "443"
+        - "8443"
+        - "4443"
+      matchActions:
+      - action: Post
+        rateLimit: "5s"
+    # Log HTTP connections (more suspicious)
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "80"
+        - "8080"
+        - "8000"
+      matchActions:
+      - action: Post
+        rateLimit: "5s"
+
+  # Monitor curl/wget for potential C2 download
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/curl"
+        - "/wget"
+      matchActions:
+      - action: Post
+
+  # Detect potential stageless payloads (memfd_create for fileless malware)
+  - call: "sys_memfd_create"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    - index: 1
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Post
+
+  # Detect process hollowing / injection attempts
+  - call: "sys_ptrace"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Sigkill

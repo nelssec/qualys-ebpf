@@ -1,0 +1,47 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: block-kernel-module-loading
+  labels:
+    app.kubernetes.io/name: qualys-threat-prevention
+    threat.qualys.com/category: persistence
+    threat.qualys.com/severity: critical
+    mitre.attack/tactic: persistence
+    mitre.attack/technique: T1547.006
+spec:
+  kprobes:
+  # Block kernel module loading
+  - call: "sys_init_module"
+    syscall: true
+    args:
+    - index: 0
+      type: "char_buf"
+    selectors:
+    - matchActions:
+      - action: Sigkill
+
+  - call: "sys_finit_module"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Sigkill
+
+  # Block insmod/modprobe execution
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/insmod"
+        - "/modprobe"
+        - "/rmmod"
+      matchActions:
+      - action: Sigkill

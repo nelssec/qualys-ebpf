@@ -1,0 +1,169 @@
+# Block Network Scanning Utilities
+# Generated from Qualys CDR Events - US2 Platform
+#
+# MITRE ATT&CK:
+#   - T1046: Network Service Scanning
+#   - T1040: Network Sniffing
+#
+# Detected Attack Pattern:
+#   - Container: python-executed-suspicious-arg-t1059-006
+#   - Process: /usr/bin/nmap
+#   - Severity: HIGH
+#
+# This policy blocks execution and operation of network scanning/enumeration tools
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: block-network-scanning
+  labels:
+    generated-by: qualys-cdr
+    qualys.com/platform: US2
+    mitre.attack/technique: T1046
+    mitre.attack/tactic: discovery
+    policy.qualys.com/priority: high
+    policy.qualys.com/action: block
+  annotations:
+    description: "Block network scanning and enumeration tools"
+    qualys.com/threat-category: "Network_Scanning_Utility"
+    qualys.com/cdr-event-count: "2"
+spec:
+  kprobes:
+    # Block execution of network scanning tools
+    - call: "sys_execve"
+      syscall: true
+      args:
+        - index: 0
+          type: "string"
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: "Postfix"
+              values:
+                # Port scanners
+                - "/nmap"
+                - "/masscan"
+                - "/zmap"
+                - "/rustscan"
+                # Network enumeration
+                - "/netcat"
+                - "/nc"
+                - "/ncat"
+                - "/socat"
+                # Host discovery
+                - "/fping"
+                - "/hping"
+                - "/hping2"
+                - "/hping3"
+                # Service enumeration
+                - "/nikto"
+                - "/dirb"
+                - "/gobuster"
+                - "/ffuf"
+          matchActions:
+            - action: "Sigkill"
+
+    # Block raw socket creation (used by scanners)
+    - call: "sys_socket"
+      syscall: true
+      args:
+        - index: 0
+          type: "int"
+        - index: 1
+          type: "int"
+        - index: 2
+          type: "int"
+      selectors:
+        # SOCK_RAW (type=3) for raw packet access
+        - matchArgs:
+            - index: 1
+              operator: "Equal"
+              values:
+                - "3"
+          matchActions:
+            - action: "Sigkill"
+        # IPPROTO_RAW (protocol=255)
+        - matchArgs:
+            - index: 2
+              operator: "Equal"
+              values:
+                - "255"
+          matchActions:
+            - action: "Sigkill"
+        # IPPROTO_ICMP (protocol=1) - used by ping sweeps
+        - matchArgs:
+            - index: 2
+              operator: "Equal"
+              values:
+                - "1"
+          matchBinaries:
+            - operator: "NotIn"
+              values:
+                - "/bin/ping"
+                - "/usr/bin/ping"
+          matchActions:
+            - action: "Sigkill"
+
+    # Block pcap-based packet capture
+    - call: "sys_setsockopt"
+      syscall: true
+      args:
+        - index: 1
+          type: "int"
+        - index: 2
+          type: "int"
+      selectors:
+        # SOL_PACKET (263) with PACKET_ADD_MEMBERSHIP
+        - matchArgs:
+            - index: 1
+              operator: "Equal"
+              values:
+                - "263"
+          matchActions:
+            - action: "Sigkill"
+---
+# Audit-only version for monitoring without blocking
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: audit-network-scanning
+  labels:
+    generated-by: qualys-cdr
+    qualys.com/platform: US2
+    mitre.attack/technique: T1046
+    policy.qualys.com/priority: high
+    policy.qualys.com/action: audit
+spec:
+  kprobes:
+    - call: "sys_execve"
+      syscall: true
+      args:
+        - index: 0
+          type: "string"
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: "Postfix"
+              values:
+                - "/nmap"
+                - "/masscan"
+                - "/netcat"
+                - "/nc"
+                - "/ncat"
+          matchActions:
+            - action: "Post"
+    - call: "sys_socket"
+      syscall: true
+      args:
+        - index: 0
+          type: "int"
+        - index: 1
+          type: "int"
+      selectors:
+        - matchArgs:
+            - index: 1
+              operator: "Equal"
+              values:
+                - "3"
+          matchActions:
+            - action: "Post"

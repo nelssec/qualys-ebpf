@@ -1,0 +1,81 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: block-data-exfiltration
+  labels:
+    app.kubernetes.io/name: qualys-network-security
+    threat.qualys.com/category: exfiltration
+    mitre.attack/tactic: exfiltration
+    mitre.attack/technique: T1041
+spec:
+  kprobes:
+  # Block common exfiltration tools
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/scp"
+        - "/sftp"
+        - "/rsync"
+        - "/rclone"
+        - "/ftp"
+        - "/tftp"
+      matchActions:
+      - action: Sigkill
+
+  # Block connections to cloud storage services (potential exfil)
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    # Block common file sharing ports
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "21"    # FTP
+        - "22"    # SSH/SCP
+        - "69"    # TFTP
+        - "445"   # SMB
+        - "139"   # NetBIOS
+      matchActions:
+      - action: Sigkill
+
+  # Monitor large data transfers (sendfile syscall)
+  - call: "sys_sendfile"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "int"
+    - index: 3
+      type: "size_t"
+    selectors:
+    - matchActions:
+      - action: Post
+
+  # Block base64/encoding tools often used for exfil
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/base64"
+        - "/xxd"
+        - "/uuencode"
+      matchActions:
+      - action: Post  # Audit - blocking may be too aggressive

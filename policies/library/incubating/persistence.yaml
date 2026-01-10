@@ -1,0 +1,200 @@
+# Persistence Detection
+# Maturity: incubating
+# Priority: MEDIUM-HIGH
+# Reference: Falco "Modify Shell Configuration File", "Schedule Cron Jobs"
+# MITRE ATT&CK: T1053 - Scheduled Task/Job
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: persistence-cron-modification
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: high
+    policy.qualys.com/category: file
+    mitre.attack/tactic: persistence
+    mitre.attack/technique: T1053.003
+    qualys.com/severity: "4"
+  annotations:
+    description: |
+      Detects modifications to cron directories and files.
+      Used for persistence through scheduled task execution.
+    falco-equivalent: "Schedule Cron Jobs"
+spec:
+  kprobes:
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/etc/cron.d"
+        - "/etc/cron.daily"
+        - "/etc/cron.hourly"
+        - "/etc/cron.weekly"
+        - "/etc/cron.monthly"
+        - "/var/spool/cron"
+        - "/var/spool/anacron"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"  # Write flag
+      matchActions:
+      - action: Post
+
+    - matchArgs:
+      - index: 1
+        operator: "Equal"
+        values:
+        - "/etc/crontab"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Post
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: persistence-systemd-modification
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: high
+    policy.qualys.com/category: file
+    mitre.attack/tactic: persistence
+    mitre.attack/technique: T1543.002
+    qualys.com/severity: "4"
+  annotations:
+    description: |
+      Detects creation or modification of systemd service files.
+      Used for persistence through service creation.
+spec:
+  kprobes:
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/etc/systemd/system"
+        - "/usr/lib/systemd/system"
+        - "/lib/systemd/system"
+        - "/run/systemd/system"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Post
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: persistence-shell-profile
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: medium
+    policy.qualys.com/category: file
+    mitre.attack/tactic: persistence
+    mitre.attack/technique: T1546.004
+    qualys.com/severity: "3"
+  annotations:
+    description: |
+      Detects modifications to shell profile files.
+      Used for persistence through login script modification.
+    falco-equivalent: "Modify Shell Configuration File"
+    false-positive-note: |
+      User configuration changes will trigger this.
+      Consider monitoring only system-wide profiles.
+spec:
+  kprobes:
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Postfix"
+        values:
+        - "/.bashrc"
+        - "/.bash_profile"
+        - "/.profile"
+        - "/.zshrc"
+        - "/.zprofile"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Post
+        rateLimit: "1m"
+
+    - matchArgs:
+      - index: 1
+        operator: "Equal"
+        values:
+        - "/etc/profile"
+        - "/etc/bash.bashrc"
+        - "/etc/bashrc"
+        - "/etc/zshrc"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Post
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: persistence-ssh-authorized-keys
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: high
+    policy.qualys.com/category: file
+    mitre.attack/tactic: persistence
+    mitre.attack/technique: T1098.004
+    qualys.com/severity: "4"
+  annotations:
+    description: |
+      Detects modifications to SSH authorized_keys files.
+      Used for persistence through SSH key installation.
+spec:
+  kprobes:
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Postfix"
+        values:
+        - "/.ssh/authorized_keys"
+        - "/.ssh/authorized_keys2"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Post

@@ -1,0 +1,93 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: privilege-escalation-detection
+  labels:
+    app.kubernetes.io/name: qualys-threat-detection
+    threat.qualys.com/category: privilege-escalation
+    mitre.attack/tactic: privilege-escalation
+    mitre.attack/technique: T1548
+spec:
+  kprobes:
+  # Detect setuid/setgid changes
+  - call: "sys_setuid"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Equal"
+        values:
+        - "0"
+      matchActions:
+      - action: Post
+
+  - call: "sys_setgid"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Equal"
+        values:
+        - "0"
+      matchActions:
+      - action: Post
+
+  # Detect setreuid (real and effective UID)
+  - call: "sys_setreuid"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Equal"
+        values:
+        - "0"
+      matchActions:
+      - action: Post
+
+  # Detect capability changes
+  - call: "sys_capset"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchCapabilityChanges:
+      - type: Effective
+        operator: In
+        isNamespaceCapability: false
+        values:
+        - "CAP_SYS_ADMIN"
+        - "CAP_NET_ADMIN"
+        - "CAP_SYS_PTRACE"
+        - "CAP_DAC_OVERRIDE"
+      matchActions:
+      - action: Post
+
+  # Monitor sudo/su execution
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/sudo"
+        - "/su"
+        - "/doas"
+        - "/pkexec"
+      matchActions:
+      - action: Post

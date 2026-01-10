@@ -1,0 +1,146 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: persistence-detection
+  labels:
+    app.kubernetes.io/name: qualys-threat-detection
+    threat.qualys.com/category: persistence
+    mitre.attack/tactic: persistence
+    mitre.attack/technique: T1053
+spec:
+  kprobes:
+  # Detect cron job modifications
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/etc/cron"
+        - "/var/spool/cron"
+        - "/etc/crontab"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"  # O_RDWR or write
+      matchActions:
+      - action: Post
+
+  # Detect systemd service creation
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/etc/systemd/system"
+        - "/usr/lib/systemd/system"
+        - "/lib/systemd/system"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Post
+
+  # Detect init.d script modifications
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/etc/init.d"
+        - "/etc/rc.d"
+        - "/etc/rc.local"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Post
+
+  # Detect shell profile modifications (login persistence)
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Postfix"
+        values:
+        - ".bashrc"
+        - ".bash_profile"
+        - ".profile"
+        - ".zshrc"
+        - "/etc/profile"
+        - "/etc/bash.bashrc"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Post
+
+  # Detect SSH authorized_keys modifications
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Postfix"
+        values:
+        - "/.ssh/authorized_keys"
+        - "/.ssh/authorized_keys2"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Post
+
+  # Detect kernel module loading
+  - call: "sys_init_module"
+    syscall: true
+    args:
+    - index: 0
+      type: "char_buf"
+    selectors:
+    - matchActions:
+      - action: Post
+
+  - call: "sys_finit_module"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Post

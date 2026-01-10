@@ -1,0 +1,99 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: container-escape-detection
+  labels:
+    app.kubernetes.io/name: qualys-threat-detection
+    threat.qualys.com/category: container-escape
+    mitre.attack/tactic: privilege-escalation
+    mitre.attack/technique: T1611
+spec:
+  kprobes:
+  # Detect namespace manipulation (container breakout)
+  - call: "sys_unshare"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchNamespaceChanges:
+      - operator: In
+        values:
+        - "User"
+        - "Mnt"
+        - "Pid"
+        - "Net"
+      matchActions:
+      - action: Post
+
+  # Detect setns (namespace switching)
+  - call: "sys_setns"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Post
+
+  # Detect mount operations (potential container escape)
+  - call: "sys_mount"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "string"
+    selectors:
+    # Detect mounting sensitive host paths
+    - matchArgs:
+      - index: 0
+        operator: "Prefix"
+        values:
+        - "/proc"
+        - "/sys"
+        - "/dev"
+        - "/host"
+      matchActions:
+      - action: Post
+    # Detect cgroup escape attempts
+    - matchArgs:
+      - index: 2
+        operator: "Equal"
+        values:
+        - "cgroup"
+        - "cgroup2"
+      matchActions:
+      - action: Post
+
+  # Detect ptrace (process injection/debugging)
+  - call: "sys_ptrace"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Post
+
+  # Detect access to container runtime sockets
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Postfix"
+        values:
+        - "docker.sock"
+        - "containerd.sock"
+        - "crio.sock"
+        - "podman.sock"
+      matchActions:
+      - action: Post

@@ -1,0 +1,142 @@
+# Container Escape Detection and Prevention
+# Maturity: stable
+# Priority: CRITICAL
+# Reference: Falco "Detect release_agent File Container Escapes"
+# MITRE ATT&CK: T1611 - Escape to Host
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: container-escape-namespace-manipulation
+  labels:
+    # Maturity and categorization (Falco-style)
+    policy.qualys.com/maturity: stable
+    policy.qualys.com/priority: critical
+    policy.qualys.com/category: container
+    # MITRE ATT&CK mapping
+    mitre.attack/tactic: privilege-escalation
+    mitre.attack/technique: T1611
+    # Qualys integration
+    qualys.com/severity: "5"
+    qualys.com/cdr-integration: "true"
+  annotations:
+    description: |
+      Detects namespace manipulation attempts that could lead to container escape.
+      This includes unshare and setns syscalls which can be used to break out
+      of container isolation by manipulating Linux namespaces.
+    falco-equivalent: "Detect release_agent File Container Escapes"
+    false-positive-note: |
+      Container runtimes and orchestrators legitimately use namespace operations.
+      Consider excluding known runtime binaries if false positives occur.
+spec:
+  kprobes:
+  # Detect unshare for namespace escape
+  - call: "sys_unshare"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchNamespaceChanges:
+      - operator: In
+        values:
+        - "User"
+        - "Mnt"
+        - "Pid"
+        - "Net"
+      matchActions:
+      - action: Sigkill
+
+  # Detect setns for namespace switching
+  - call: "sys_setns"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Sigkill
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: container-escape-runtime-socket
+  labels:
+    policy.qualys.com/maturity: stable
+    policy.qualys.com/priority: critical
+    policy.qualys.com/category: container
+    mitre.attack/tactic: privilege-escalation
+    mitre.attack/technique: T1611
+    qualys.com/severity: "5"
+  annotations:
+    description: |
+      Blocks access to container runtime sockets (docker.sock, containerd.sock)
+      which could allow container escape via the container runtime API.
+    cve-reference: "Multiple CVEs involve runtime socket access"
+spec:
+  kprobes:
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Postfix"
+        values:
+        - "docker.sock"
+        - "containerd.sock"
+        - "crio.sock"
+        - "podman.sock"
+        - "dockershim.sock"
+      matchActions:
+      - action: Sigkill
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: container-escape-mount-sensitive
+  labels:
+    policy.qualys.com/maturity: stable
+    policy.qualys.com/priority: critical
+    policy.qualys.com/category: container
+    mitre.attack/tactic: privilege-escalation
+    mitre.attack/technique: T1611
+    qualys.com/severity: "5"
+  annotations:
+    description: |
+      Detects mount operations targeting sensitive host paths from within containers.
+      Reference: Falco "Mount Launched in Privileged Container"
+spec:
+  kprobes:
+  - call: "sys_mount"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "string"
+    selectors:
+    # Mounting /proc (cgroup escape vector)
+    - matchArgs:
+      - index: 0
+        operator: "Prefix"
+        values:
+        - "/proc"
+        - "/sys"
+      matchActions:
+      - action: Sigkill
+    # Mounting cgroup filesystems
+    - matchArgs:
+      - index: 2
+        operator: "Equal"
+        values:
+        - "cgroup"
+        - "cgroup2"
+      matchActions:
+      - action: Sigkill

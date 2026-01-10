@@ -1,0 +1,152 @@
+# Lateral Movement Detection
+# Maturity: incubating
+# Priority: MEDIUM
+# Reference: Falco "Launch Remote File Copy Tools in Container"
+# MITRE ATT&CK: T1021 - Remote Services
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: lateral-movement-ssh-client
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: medium
+    policy.qualys.com/category: process
+    mitre.attack/tactic: lateral-movement
+    mitre.attack/technique: T1021.004
+    qualys.com/severity: "3"
+  annotations:
+    description: |
+      Detects SSH client execution from containers.
+      May indicate lateral movement attempts.
+    falco-equivalent: "Launch Remote File Copy Tools in Container"
+    false-positive-note: |
+      Legitimate SSH usage in jump boxes will trigger this.
+      Consider namespace filtering for high-security zones.
+spec:
+  kprobes:
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/ssh"
+        - "/scp"
+        - "/sftp"
+      matchActions:
+      - action: Post
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: lateral-movement-k8s-tools
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: medium
+    policy.qualys.com/category: process
+    mitre.attack/tactic: lateral-movement
+    mitre.attack/technique: T1609
+    qualys.com/severity: "3"
+  annotations:
+    description: |
+      Detects execution of Kubernetes management tools from containers.
+      May indicate cluster exploration or lateral movement.
+spec:
+  kprobes:
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/kubectl"
+        - "/oc"
+        - "/helm"
+        - "/kubeadm"
+        - "/calicoctl"
+        - "/istioctl"
+      matchActions:
+      - action: Post
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: lateral-movement-k8s-api-access
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: medium
+    policy.qualys.com/category: network
+    mitre.attack/tactic: lateral-movement
+    mitre.attack/technique: T1609
+    qualys.com/severity: "3"
+  annotations:
+    description: |
+      Monitors connections to Kubernetes API and control plane ports.
+      High volume from unexpected pods may indicate reconnaissance.
+spec:
+  kprobes:
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "6443"   # Kubernetes API
+        - "8443"   # Kubernetes API alt
+        - "10250"  # Kubelet
+        - "10255"  # Kubelet read-only
+        - "2379"   # etcd client
+        - "2380"   # etcd peer
+      matchActions:
+      - action: Post
+        rateLimit: "30s"
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: lateral-movement-recon-tools
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: medium
+    policy.qualys.com/category: process
+    mitre.attack/tactic: discovery
+    mitre.attack/technique: T1046
+    qualys.com/severity: "3"
+  annotations:
+    description: |
+      Detects execution of network reconnaissance tools.
+      Commonly used before lateral movement.
+spec:
+  kprobes:
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/nmap"
+        - "/masscan"
+        - "/zmap"
+        - "/netdiscover"
+        - "/arp-scan"
+        - "/nbtscan"
+        - "/enum4linux"
+      matchActions:
+      - action: Post

@@ -1,0 +1,78 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: crypto-miner-detection
+  labels:
+    app.kubernetes.io/name: qualys-threat-detection
+    threat.qualys.com/category: resource-hijacking
+    mitre.attack/tactic: impact
+    mitre.attack/technique: T1496
+spec:
+  kprobes:
+  # Detect execution of known crypto mining binaries
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "xmrig"
+        - "xmr-stak"
+        - "minerd"
+        - "cpuminer"
+        - "cgminer"
+        - "bfgminer"
+        - "ethminer"
+        - "ccminer"
+        - "nheqminer"
+        - "cryptonight"
+        - "stratum"
+        - "nicehash"
+        - "minergate"
+        - "kswapd0"  # Common miner disguise name
+        - "watchdogs" # Common miner disguise name
+      matchActions:
+      - action: Post
+
+  # Detect connections to common mining pools
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    # Common mining pool ports
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "3333"   # Stratum
+        - "4444"   # Stratum alt
+        - "5555"   # XMR
+        - "7777"   # Mining pool
+        - "8888"   # Mining pool
+        - "9999"   # Mining pool
+        - "14433"  # XMR SSL
+        - "14444"  # Stratum SSL
+        - "45700"  # Monero
+      matchActions:
+      - action: Post
+
+  # Monitor /dev/cpu for RDMSR/WRMSR access (CPU optimization for mining)
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/dev/cpu"
+      matchActions:
+      - action: Post

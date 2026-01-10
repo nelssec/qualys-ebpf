@@ -1,0 +1,130 @@
+# Reverse Shell Detection and Prevention
+# Maturity: stable
+# Priority: CRITICAL
+# Reference: Falco "Redirect STDOUT/STDIN to Network Connection in Container"
+# MITRE ATT&CK: T1059.004 - Command and Scripting Interpreter: Unix Shell
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: reverse-shell-netcat-block
+  labels:
+    policy.qualys.com/maturity: stable
+    policy.qualys.com/priority: critical
+    policy.qualys.com/category: process
+    mitre.attack/tactic: execution
+    mitre.attack/technique: T1059.004
+    qualys.com/severity: "5"
+  annotations:
+    description: |
+      Blocks execution of netcat and similar tools commonly used for reverse shells.
+      This is a high-confidence detection with low false positive rate.
+    falco-equivalent: "Netcat Remote Code Execution in Container"
+spec:
+  kprobes:
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/nc"
+        - "/ncat"
+        - "/netcat"
+        - "/nc.traditional"
+        - "/nc.openbsd"
+        - "/socat"
+      matchActions:
+      - action: Sigkill
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: reverse-shell-webserver-spawn
+  labels:
+    policy.qualys.com/maturity: stable
+    policy.qualys.com/priority: critical
+    policy.qualys.com/category: process
+    mitre.attack/tactic: execution
+    mitre.attack/technique: T1059.004
+    qualys.com/severity: "5"
+  annotations:
+    description: |
+      Detects web server processes spawning shell interpreters, a strong
+      indicator of webshell activity or command injection exploitation.
+    falco-equivalent: "Shell Spawned by Web Server"
+spec:
+  kprobes:
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchBinaries:
+        operator: In
+        values:
+        - "/usr/sbin/apache2"
+        - "/usr/sbin/httpd"
+        - "/usr/sbin/nginx"
+        - "/usr/bin/php"
+        - "/usr/bin/php-fpm"
+        - "/usr/bin/php-fpm7.4"
+        - "/usr/bin/php-fpm8.0"
+        - "/usr/bin/php-fpm8.1"
+        - "/usr/bin/node"
+        - "/usr/local/bin/node"
+      matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/sh"
+        - "/bash"
+        - "/dash"
+        - "/zsh"
+        - "/ash"
+        - "/csh"
+        - "/tcsh"
+      matchActions:
+      - action: Sigkill
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: reverse-shell-outbound-connection
+  labels:
+    policy.qualys.com/maturity: stable
+    policy.qualys.com/priority: critical
+    policy.qualys.com/category: network
+    mitre.attack/tactic: execution
+    mitre.attack/technique: T1059.004
+    qualys.com/severity: "5"
+  annotations:
+    description: |
+      Blocks shell interpreters from making outbound network connections.
+      Shells should not typically initiate network connections.
+spec:
+  kprobes:
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    - matchBinaries:
+        operator: In
+        values:
+        - "/bin/sh"
+        - "/bin/bash"
+        - "/bin/dash"
+        - "/bin/zsh"
+        - "/bin/ash"
+        - "/usr/bin/sh"
+        - "/usr/bin/bash"
+        - "/usr/bin/zsh"
+      matchActions:
+      - action: Sigkill

@@ -1,0 +1,48 @@
+apiVersion: qualys.com/v1
+kind: FimPolicy
+metadata:
+  name: cron-monitoring
+  labels:
+    app.kubernetes.io/name: qualys-fim
+    threat.qualys.com/category: persistence
+spec:
+  base-policy: "file-write"
+  action: "audit"
+  monitor-paths:
+    - "/etc/crontab"
+    - "/etc/cron.d"
+    - "/etc/cron.daily"
+    - "/etc/cron.hourly"
+    - "/etc/cron.weekly"
+    - "/etc/cron.monthly"
+    - "/var/spool/cron"
+---
+apiVersion: qualys.com/v1
+kind: FimPolicy
+metadata:
+  name: systemd-monitoring
+  labels:
+    app.kubernetes.io/name: qualys-fim
+    threat.qualys.com/category: persistence
+spec:
+  base-policy: "file-write"
+  action: "audit"
+  monitor-paths:
+    - "/etc/systemd/system"
+    - "/usr/lib/systemd/system"
+    - "/lib/systemd/system"
+---
+apiVersion: qualys.com/v1
+kind: FimPolicy
+metadata:
+  name: init-scripts-monitoring
+  labels:
+    app.kubernetes.io/name: qualys-fim
+    threat.qualys.com/category: persistence
+spec:
+  base-policy: "file-write"
+  action: "audit"
+  monitor-paths:
+    - "/etc/init.d"
+    - "/etc/rc.d"
+    - "/etc/rc.local"

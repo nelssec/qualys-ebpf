@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Credentials and secrets - NEVER commit these
+*.env
+.env.*
+credentials.json
+secrets.yaml
+secrets.yml
+**/secrets/
+*.pem
+*.key
+*.crt
+
+# Generated policies (commit manually reviewed ones only)
+cdr-generated-*/
+*-generated/
+
+# Test outputs
+test-output/
+*.log
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.dylib
+*.test
+*.out
+go.work
+
+# Kubernetes local configs
+kubeconfig
+.kube/
+
+# Helm
+charts/*.tgz

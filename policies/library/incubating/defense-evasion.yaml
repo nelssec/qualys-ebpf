@@ -1,0 +1,145 @@
+# Defense Evasion Detection
+# Maturity: incubating
+# Priority: MEDIUM-HIGH
+# Reference: Falco "Clear Log Activities", "Debugfs Launched in Privileged Container"
+# MITRE ATT&CK: T1070 - Indicator Removal
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: defense-evasion-log-tampering
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: high
+    policy.qualys.com/category: file
+    mitre.attack/tactic: defense-evasion
+    mitre.attack/technique: T1070.002
+    qualys.com/severity: "4"
+  annotations:
+    description: |
+      Detects attempts to modify or delete log files.
+      May have false positives from legitimate log rotation.
+    falco-equivalent: "Clear Log Activities"
+    false-positive-note: |
+      Log rotation tools (logrotate) will trigger this.
+      Consider excluding logrotate and similar tools.
+spec:
+  kprobes:
+  - call: "sys_unlinkat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/var/log"
+      matchActions:
+      - action: Post
+
+  - call: "sys_truncate"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Prefix"
+        values:
+        - "/var/log"
+      matchActions:
+      - action: Post
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: defense-evasion-history-tampering
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: medium
+    policy.qualys.com/category: file
+    mitre.attack/tactic: defense-evasion
+    mitre.attack/technique: T1070.003
+    qualys.com/severity: "3"
+  annotations:
+    description: |
+      Detects attempts to delete or modify shell history files.
+spec:
+  kprobes:
+  - call: "sys_unlinkat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Postfix"
+        values:
+        - ".bash_history"
+        - ".zsh_history"
+        - ".sh_history"
+        - ".history"
+      matchActions:
+      - action: Post
+
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Postfix"
+        values:
+        - ".bash_history"
+        - ".zsh_history"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "512"  # O_TRUNC
+      matchActions:
+      - action: Post
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: defense-evasion-timestomp
+  labels:
+    policy.qualys.com/maturity: incubating
+    policy.qualys.com/priority: medium
+    policy.qualys.com/category: syscall
+    mitre.attack/tactic: defense-evasion
+    mitre.attack/technique: T1070.006
+    qualys.com/severity: "3"
+  annotations:
+    description: |
+      Detects timestamp modification on files (timestomping).
+      Often used to hide malicious file modifications.
+spec:
+  kprobes:
+  - call: "sys_utimensat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    selectors:
+    # Focus on sensitive paths
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/etc"
+        - "/usr/bin"
+        - "/usr/sbin"
+        - "/bin"
+        - "/sbin"
+      matchActions:
+      - action: Post
+        rateLimit: "1m"

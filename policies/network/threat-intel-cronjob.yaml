@@ -1,0 +1,93 @@
+# CronJob to automatically update threat intelligence feeds
+# Runs daily and updates blocklist policies
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: threat-intel-updater
+  namespace: qualys
+  labels:
+    app.kubernetes.io/name: threat-intel-updater
+spec:
+  schedule: "0 2 * * *"  # Run daily at 2 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: threat-intel-updater
+          restartPolicy: OnFailure
+          containers:
+          - name: updater
+            image: python:3.11-slim
+            env:
+            - name: ABUSEIPDB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: threat-intel-keys
+                  key: abuseipdb-key
+                  optional: true
+            - name: OTX_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: threat-intel-keys
+                  key: otx-key
+                  optional: true
+            command:
+            - /bin/sh
+            - -c
+            - |
+              pip install requests pyyaml kubernetes
+              python /scripts/threat_intel.py --output /tmp/policies
+
+              # Apply policies using kubectl
+              kubectl apply -f /tmp/policies/
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          volumes:
+          - name: scripts
+            configMap:
+              name: threat-intel-scripts
+---
+# ServiceAccount for the CronJob
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: threat-intel-updater
+  namespace: qualys
+---
+# RBAC to allow policy updates
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: threat-intel-updater
+rules:
+- apiGroups: ["cilium.io"]
+  resources: ["ciliumnetworkpolicies", "tracingpolicies"]
+  verbs: ["get", "list", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: threat-intel-updater
+subjects:
+- kind: ServiceAccount
+  name: threat-intel-updater
+  namespace: qualys
+roleRef:
+  kind: ClusterRole
+  name: threat-intel-updater
+  apiGroup: rbac.authorization.k8s.io
+---
+# Secret for API keys (create with your actual keys)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: threat-intel-keys
+  namespace: qualys
+type: Opaque
+stringData:
+  abuseipdb-key: "YOUR_ABUSEIPDB_API_KEY"
+  otx-key: "YOUR_ALIENVAULT_OTX_KEY"

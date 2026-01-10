@@ -1,0 +1,175 @@
+# Privilege Escalation Detection
+# Maturity: stable
+# Priority: HIGH/CRITICAL
+# Reference: Falco "PTRACE attached to process", "Privilege Escalation via Environment Variables"
+# MITRE ATT&CK: T1548 - Abuse Elevation Control Mechanism
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: privesc-setuid-root
+  labels:
+    policy.qualys.com/maturity: stable
+    policy.qualys.com/priority: high
+    policy.qualys.com/category: syscall
+    mitre.attack/tactic: privilege-escalation
+    mitre.attack/technique: T1548.001
+    qualys.com/severity: "4"
+  annotations:
+    description: |
+      Detects processes attempting to set UID to 0 (root).
+      This could indicate privilege escalation attempts.
+    falco-equivalent: "Non sudo setuid"
+    false-positive-note: |
+      Legitimate setuid binaries like sudo, su will trigger this.
+      Consider excluding trusted setuid binaries.
+spec:
+  kprobes:
+  - call: "sys_setuid"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Equal"
+        values:
+        - "0"
+      matchActions:
+      - action: Post
+
+  - call: "sys_setreuid"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Equal"
+        values:
+        - "0"
+      matchActions:
+      - action: Post
+
+  - call: "sys_setresuid"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "int"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 2
+        operator: "Equal"
+        values:
+        - "0"
+      matchActions:
+      - action: Post
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: privesc-ptrace-injection
+  labels:
+    policy.qualys.com/maturity: stable
+    policy.qualys.com/priority: critical
+    policy.qualys.com/category: syscall
+    mitre.attack/tactic: privilege-escalation
+    mitre.attack/technique: T1055.008
+    qualys.com/severity: "5"
+  annotations:
+    description: |
+      Blocks ptrace system calls which can be used for process injection
+      and debugging-based privilege escalation.
+    falco-equivalent: "PTRACE attached to process"
+spec:
+  kprobes:
+  - call: "sys_ptrace"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Sigkill
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: privesc-kernel-module-load
+  labels:
+    policy.qualys.com/maturity: stable
+    policy.qualys.com/priority: critical
+    policy.qualys.com/category: syscall
+    mitre.attack/tactic: persistence
+    mitre.attack/technique: T1547.006
+    qualys.com/severity: "5"
+  annotations:
+    description: |
+      Blocks loading of kernel modules which could be used for
+      rootkit installation or privilege escalation.
+    falco-equivalent: "Linux Kernel Module Injection Detected"
+spec:
+  kprobes:
+  - call: "sys_init_module"
+    syscall: true
+    args:
+    - index: 0
+      type: "char_buf"
+    selectors:
+    - matchActions:
+      - action: Sigkill
+
+  - call: "sys_finit_module"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Sigkill
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: privesc-capability-changes
+  labels:
+    policy.qualys.com/maturity: stable
+    policy.qualys.com/priority: high
+    policy.qualys.com/category: syscall
+    mitre.attack/tactic: privilege-escalation
+    mitre.attack/technique: T1548
+    qualys.com/severity: "4"
+  annotations:
+    description: |
+      Monitors changes to process capabilities, particularly dangerous
+      capabilities like CAP_SYS_ADMIN, CAP_NET_ADMIN.
+spec:
+  kprobes:
+  - call: "sys_capset"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchCapabilityChanges:
+      - type: Effective
+        operator: In
+        isNamespaceCapability: false
+        values:
+        - "CAP_SYS_ADMIN"
+        - "CAP_NET_ADMIN"
+        - "CAP_SYS_PTRACE"
+        - "CAP_DAC_OVERRIDE"
+        - "CAP_DAC_READ_SEARCH"
+        - "CAP_SETUID"
+        - "CAP_SETGID"
+      matchActions:
+      - action: Post

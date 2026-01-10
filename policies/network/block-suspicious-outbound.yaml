@@ -1,0 +1,60 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: block-suspicious-outbound
+  labels:
+    app.kubernetes.io/name: qualys-network-security
+    threat.qualys.com/category: command-and-control
+    mitre.attack/tactic: command-and-control
+    mitre.attack/technique: T1571
+spec:
+  kprobes:
+  # Block outbound connections to common C2/backdoor ports
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    # Block common RAT/C2 ports
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "4444"   # Metasploit default
+        - "5555"   # Common backdoor
+        - "6666"   # Common backdoor
+        - "6667"   # IRC (C2)
+        - "6668"   # IRC
+        - "6669"   # IRC
+        - "1337"   # Elite/leet port
+        - "31337"  # Back Orifice
+        - "12345"  # NetBus
+        - "27374"  # SubSeven
+        - "65535"  # Common backdoor
+      matchActions:
+      - action: Sigkill
+    # Block Cobalt Strike default ports
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "50050"  # Cobalt Strike
+        - "9999"   # Common C2
+        - "8443"   # Suspicious HTTPS alt
+        - "8888"   # Common backdoor
+      matchActions:
+      - action: Sigkill
+    # Block crypto mining pools (prevention)
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "3333"
+        - "14433"
+        - "14444"
+        - "45700"
+      matchActions:
+      - action: Sigkill

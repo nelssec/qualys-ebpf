@@ -1,0 +1,29 @@
+apiVersion: qualys.com/v1
+kind: FimPolicy
+metadata:
+  name: webroot-write-monitoring
+  labels:
+    app.kubernetes.io/name: qualys-fim
+    threat.qualys.com/category: initial-access
+spec:
+  base-policy: "file-write"
+  action: "audit"
+  monitor-paths:
+    - "/var/www"
+    - "/srv/www"
+    - "/usr/share/nginx/html"
+    - "/opt/lampp/htdocs"
+---
+apiVersion: qualys.com/v1
+kind: FimPolicy
+metadata:
+  name: webroot-delete-monitoring
+  labels:
+    app.kubernetes.io/name: qualys-fim
+    threat.qualys.com/category: impact
+spec:
+  base-policy: "file-delete"
+  action: "audit"
+  monitor-paths:
+    - "/var/www"
+    - "/srv/www"

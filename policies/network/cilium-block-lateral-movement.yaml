@@ -1,0 +1,62 @@
+# Cilium Network Policy - Block Lateral Movement
+# Prevent inter-namespace and inter-pod attacks
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: block-cross-namespace
+  labels:
+    app.kubernetes.io/name: qualys-network-security
+    policy-type: microsegmentation
+spec:
+  description: "Block cross-namespace traffic except allowed"
+  endpointSelector: {}
+  ingress:
+  # Only allow traffic from same namespace
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: "${NAMESPACE}"
+  # Allow from monitoring namespace
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: monitoring
+---
+# Block access to sensitive namespaces
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: protect-sensitive-namespaces
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: qualys-network-security
+spec:
+  description: "Protect kube-system from unauthorized access"
+  endpointSelector: {}
+  ingress:
+  # Only allow from specific namespaces
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: monitoring
+---
+# Block access to metadata services (SSRF protection)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: block-metadata-service
+  labels:
+    app.kubernetes.io/name: qualys-network-security
+    policy-type: cloud-security
+spec:
+  description: "Block access to cloud metadata services"
+  endpointSelector: {}
+  egressDeny:
+  - toCIDR:
+    - "169.254.169.254/32"  # AWS/GCP/Azure metadata
+    - "100.100.100.200/32"  # Alibaba Cloud metadata
+    toPorts:
+    - ports:
+      - port: "80"
+        protocol: TCP
+      - port: "443"
+        protocol: TCP

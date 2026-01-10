@@ -1,0 +1,83 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: block-container-escape
+  labels:
+    app.kubernetes.io/name: qualys-threat-prevention
+    threat.qualys.com/category: container-escape
+    threat.qualys.com/severity: critical
+    mitre.attack/tactic: privilege-escalation
+    mitre.attack/technique: T1611
+spec:
+  kprobes:
+  # Block namespace manipulation from containers
+  - call: "sys_unshare"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    selectors:
+    - matchNamespaceChanges:
+      - operator: In
+        values:
+        - "User"
+        - "Mnt"
+        - "Pid"
+      matchActions:
+      - action: Sigkill
+
+  # Block setns (namespace switching)
+  - call: "sys_setns"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Sigkill
+
+  # Block access to container runtime sockets
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Postfix"
+        values:
+        - "docker.sock"
+        - "containerd.sock"
+        - "crio.sock"
+        - "podman.sock"
+      matchActions:
+      - action: Sigkill
+
+  # Block mounting sensitive paths
+  - call: "sys_mount"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    - index: 1
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Prefix"
+        values:
+        - "/proc"
+        - "/sys"
+      matchActions:
+      - action: Sigkill
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/host"
+        - "/rootfs"
+      matchActions:
+      - action: Sigkill

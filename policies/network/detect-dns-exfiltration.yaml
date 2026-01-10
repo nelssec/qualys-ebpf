@@ -1,0 +1,78 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: detect-dns-exfiltration
+  labels:
+    app.kubernetes.io/name: qualys-network-security
+    threat.qualys.com/category: exfiltration
+    mitre.attack/tactic: exfiltration
+    mitre.attack/technique: T1048
+spec:
+  kprobes:
+  # Monitor DNS queries (UDP port 53)
+  - call: "sys_sendto"
+    syscall: true
+    args:
+    - index: 0
+      type: "int"
+    - index: 1
+      type: "char_buf"
+      sizeArgIndex: 2
+    - index: 2
+      type: "size_t"
+    - index: 4
+      type: "sockaddr"
+    selectors:
+    # Log all DNS traffic for analysis (audit mode)
+    - matchArgs:
+      - index: 4
+        operator: "DPort"
+        values:
+        - "53"
+      matchActions:
+      - action: Post
+        rateLimit: "1s"
+
+  # Monitor DNS over TCP (often used for exfiltration)
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "53"
+      - index: 1
+        operator: "Protocol"
+        values:
+        - "IPPROTO_TCP"
+      matchActions:
+      - action: Post
+
+  # Detect DNS over HTTPS (DoH) - potential exfil channel
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    # Known DoH providers (suspicious if not expected)
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "443"
+      - index: 1
+        operator: "DAddr"
+        values:
+        - "1.1.1.1"      # Cloudflare
+        - "1.0.0.1"      # Cloudflare
+        - "8.8.8.8"      # Google
+        - "8.8.4.4"      # Google
+        - "9.9.9.9"      # Quad9
+        - "149.112.112.112"  # Quad9
+      matchActions:
+      - action: Post

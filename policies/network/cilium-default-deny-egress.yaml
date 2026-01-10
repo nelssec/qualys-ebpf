@@ -1,0 +1,46 @@
+# Cilium Network Policy - Default Deny Egress
+# Apply this to lock down pods and only allow explicit egress
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-egress
+  labels:
+    app.kubernetes.io/name: qualys-network-security
+    policy-type: baseline
+spec:
+  description: "Default deny all egress traffic - apply explicit allows"
+  endpointSelector: {}  # Applies to all pods in namespace
+  egress:
+  # Allow DNS (required for most apps)
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      - port: "53"
+        protocol: TCP
+---
+# Alternative: Apply to specific workloads
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-egress-labeled
+  labels:
+    app.kubernetes.io/name: qualys-network-security
+spec:
+  description: "Deny egress for pods with security=restricted label"
+  endpointSelector:
+    matchLabels:
+      security: restricted
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP

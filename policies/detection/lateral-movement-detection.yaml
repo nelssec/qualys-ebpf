@@ -1,0 +1,92 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: lateral-movement-detection
+  labels:
+    app.kubernetes.io/name: qualys-threat-detection
+    threat.qualys.com/category: lateral-movement
+    mitre.attack/tactic: lateral-movement
+    mitre.attack/technique: T1021
+spec:
+  kprobes:
+  # Detect SSH client execution
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/ssh"
+        - "/scp"
+        - "/sftp"
+        - "/rsync"
+        - "/kubectl"
+        - "/oc"
+        - "/helm"
+      matchActions:
+      - action: Post
+
+  # Detect network reconnaissance tools
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/nmap"
+        - "/masscan"
+        - "/zmap"
+        - "/netdiscover"
+        - "/arp-scan"
+        - "/ping"
+        - "/traceroute"
+        - "/dig"
+        - "/nslookup"
+        - "/host"
+      matchActions:
+      - action: Post
+        rateLimit: "1m"
+
+  # Monitor for service account token access
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/var/run/secrets/kubernetes.io"
+        - "/run/secrets/kubernetes.io"
+      matchActions:
+      - action: Post
+
+  # Detect connections to Kubernetes API
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "6443"  # Kubernetes API
+        - "10250" # Kubelet
+        - "10255" # Kubelet read-only
+        - "2379"  # etcd
+        - "2380"  # etcd peer
+      matchActions:
+      - action: Post
+        rateLimit: "1m"

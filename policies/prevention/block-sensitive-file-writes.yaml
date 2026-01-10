@@ -1,0 +1,88 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: block-sensitive-file-writes
+  labels:
+    app.kubernetes.io/name: qualys-threat-prevention
+    threat.qualys.com/category: defense-evasion
+    threat.qualys.com/severity: high
+    mitre.attack/tactic: persistence
+    mitre.attack/technique: T1222
+spec:
+  kprobes:
+  # Block writes to /etc/passwd and /etc/shadow
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Equal"
+        values:
+        - "/etc/passwd"
+        - "/etc/shadow"
+        - "/etc/gshadow"
+        - "/etc/sudoers"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Sigkill
+
+  # Block writes to SSH configuration
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/root/.ssh"
+        - "/home"
+      - index: 1
+        operator: "Postfix"
+        values:
+        - "/.ssh/authorized_keys"
+        - "/.ssh/authorized_keys2"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Sigkill
+
+  # Block writes to cron directories
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/etc/cron.d"
+        - "/etc/cron.daily"
+        - "/etc/cron.hourly"
+        - "/etc/cron.weekly"
+        - "/etc/cron.monthly"
+        - "/var/spool/cron"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Sigkill

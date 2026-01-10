@@ -1,0 +1,57 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: block-crypto-miners
+  labels:
+    app.kubernetes.io/name: qualys-threat-prevention
+    threat.qualys.com/category: resource-hijacking
+    threat.qualys.com/severity: high
+    mitre.attack/tactic: impact
+    mitre.attack/technique: T1496
+spec:
+  kprobes:
+  # Block known crypto mining binaries
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "xmrig"
+        - "xmr-stak"
+        - "minerd"
+        - "cpuminer"
+        - "cgminer"
+        - "bfgminer"
+        - "ethminer"
+        - "ccminer"
+        - "nheqminer"
+        - "cryptonight"
+        - "stratum"
+      matchActions:
+      - action: Sigkill
+
+  # Block connections to common mining pool ports
+  - call: "sys_connect"
+    syscall: true
+    args:
+    - index: 1
+      type: "sockaddr"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "DPort"
+        values:
+        - "3333"
+        - "4444"
+        - "5555"
+        - "7777"
+        - "14433"
+        - "14444"
+        - "45700"
+      matchActions:
+      - action: Sigkill

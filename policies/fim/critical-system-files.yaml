@@ -1,0 +1,36 @@
+apiVersion: qualys.com/v1
+kind: FimPolicy
+metadata:
+  name: critical-system-files
+  labels:
+    app.kubernetes.io/name: qualys-fim
+    threat.qualys.com/category: integrity-monitoring
+spec:
+  base-policy: "file-write"
+  action: "audit"
+  monitor-paths:
+    - "/etc/passwd"
+    - "/etc/shadow"
+    - "/etc/group"
+    - "/etc/gshadow"
+    - "/etc/sudoers"
+    - "/etc/sudoers.d"
+    - "/etc/pam.d"
+    - "/etc/security"
+    - "/etc/login.defs"
+---
+apiVersion: qualys.com/v1
+kind: FimPolicy
+metadata:
+  name: critical-system-files-delete
+  labels:
+    app.kubernetes.io/name: qualys-fim
+    threat.qualys.com/category: integrity-monitoring
+spec:
+  base-policy: "file-delete"
+  action: "audit"
+  monitor-paths:
+    - "/etc/passwd"
+    - "/etc/shadow"
+    - "/etc/group"
+    - "/etc/sudoers"

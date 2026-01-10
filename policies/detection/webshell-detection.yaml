@@ -1,0 +1,108 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: webshell-detection
+  labels:
+    app.kubernetes.io/name: qualys-threat-detection
+    threat.qualys.com/category: initial-access
+    mitre.attack/tactic: persistence
+    mitre.attack/technique: T1505.003
+spec:
+  kprobes:
+  # Detect web server spawning shells
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    # Shell execution from web server processes
+    - matchBinaries:
+        operator: In
+        values:
+        - "/usr/sbin/apache2"
+        - "/usr/sbin/httpd"
+        - "/usr/sbin/nginx"
+        - "/usr/bin/php"
+        - "/usr/bin/php-fpm"
+        - "/usr/bin/node"
+        - "/usr/bin/python"
+        - "/usr/bin/python3"
+        - "/usr/bin/java"
+      matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/sh"
+        - "/bash"
+        - "/dash"
+        - "/zsh"
+        - "/ash"
+      matchActions:
+      - action: Post
+
+  # Detect suspicious command execution from web server
+  - call: "sys_execve"
+    syscall: true
+    args:
+    - index: 0
+      type: "string"
+    selectors:
+    - matchBinaries:
+        operator: In
+        values:
+        - "/usr/sbin/apache2"
+        - "/usr/sbin/httpd"
+        - "/usr/sbin/nginx"
+        - "/usr/bin/php"
+        - "/usr/bin/php-fpm"
+      matchArgs:
+      - index: 0
+        operator: "Postfix"
+        values:
+        - "/wget"
+        - "/curl"
+        - "/nc"
+        - "/ncat"
+        - "/netcat"
+        - "/whoami"
+        - "/id"
+        - "/uname"
+        - "/cat"
+        - "/ls"
+        - "/find"
+        - "/grep"
+      matchActions:
+      - action: Post
+
+  # Monitor writing to web directories
+  - call: "sys_openat"
+    syscall: true
+    args:
+    - index: 1
+      type: "string"
+    - index: 2
+      type: "int"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Prefix"
+        values:
+        - "/var/www"
+        - "/srv/www"
+        - "/usr/share/nginx"
+        - "/opt/lampp/htdocs"
+      - index: 1
+        operator: "Postfix"
+        values:
+        - ".php"
+        - ".jsp"
+        - ".asp"
+        - ".aspx"
+        - ".war"
+      - index: 2
+        operator: "Mask"
+        values:
+        - "2"
+      matchActions:
+      - action: Post
