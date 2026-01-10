@@ -46,4 +46,4 @@ done
 
 echo ""
 echo "Prevention policies deployed successfully!"
-echo "Monitor enforcement actions with: kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon -f"
+echo "Monitor enforcement actions with: kubectl logs -n kube-system -l app.kubernetes.io/name=qualys-crs -f"

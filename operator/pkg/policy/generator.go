@@ -8,7 +8,7 @@ import (
 	"qualys-policy-operator/pkg/cdr"
 )
 
-// TracingPolicy represents a Cilium Tetragon TracingPolicy.
+// TracingPolicy represents a Qualys TracingPolicy for eBPF enforcement.
 type TracingPolicy struct {
 	APIVersion string            `json:"apiVersion"`
 	Kind       string            `json:"kind"`
@@ -109,6 +109,20 @@ func (g *Generator) policyForCategory(category string, events []cdr.Event) *Trac
 		return g.reverseShellPolicy(events, dateStr)
 	case strings.Contains(categoryLower, "suspicious_communication"):
 		return g.suspiciousNetworkPolicy(events, dateStr)
+	case strings.Contains(categoryLower, "sensitive_file") || strings.Contains(categoryLower, "credential_file"):
+		return g.sensitiveFileAccessPolicy(events, dateStr)
+	case strings.Contains(categoryLower, "persistence") || strings.Contains(categoryLower, "cron"):
+		return g.persistencePolicy(events, dateStr)
+	case strings.Contains(categoryLower, "log_tampering") || strings.Contains(categoryLower, "defense_evasion"):
+		return g.defenseEvasionPolicy(events, dateStr)
+	case strings.Contains(categoryLower, "lateral_movement") || strings.Contains(categoryLower, "ssh"):
+		return g.lateralMovementPolicy(events, dateStr)
+	case strings.Contains(categoryLower, "exfiltration") || strings.Contains(categoryLower, "data_staging"):
+		return g.dataExfiltrationPolicy(events, dateStr)
+	case strings.Contains(categoryLower, "webshell"):
+		return g.webshellPolicy(events, dateStr)
+	case strings.Contains(categoryLower, "kernel_module"):
+		return g.kernelModulePolicy(events, dateStr)
 	default:
 		return nil
 	}
@@ -396,6 +410,357 @@ func (g *Generator) suspiciousNetworkPolicy(events []cdr.Event, dateStr string) 
 							MatchArgs: []MatchArg{
 								{Index: 1, Operator: "DPort", Values: []string{
 									"4444", "5555", "6666", "8443",
+								}},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) sensitiveFileAccessPolicy(events []cdr.Event, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("cdr-block-sensitive-file-%s", dateStr)
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-cdr-operator",
+				"mitre.attack/technique":     "T1552.001",
+				"mitre.attack/tactic":        "credential-access",
+				"policy.qualys.com/priority": "high",
+			},
+			Annotations: map[string]string{
+				"description": "Block access to sensitive credential files",
+				"event-count": fmt.Sprintf("%d", len(events)),
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_openat",
+					Syscall: true,
+					Args: []Arg{
+						{Index: 0, Type: "int"},
+						{Index: 1, Type: "string"},
+					},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 1, Operator: "Prefix", Values: []string{
+									"/etc/shadow", "/etc/passwd", "/etc/gshadow",
+									"/root/.ssh/", "/home/", "/var/run/secrets/kubernetes.io/",
+								}},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) persistencePolicy(events []cdr.Event, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("cdr-block-persistence-%s", dateStr)
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-cdr-operator",
+				"mitre.attack/technique":     "T1053.003",
+				"mitre.attack/tactic":        "persistence",
+				"policy.qualys.com/priority": "high",
+			},
+			Annotations: map[string]string{
+				"description": "Block persistence mechanism creation",
+				"event-count": fmt.Sprintf("%d", len(events)),
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_openat",
+					Syscall: true,
+					Args: []Arg{
+						{Index: 0, Type: "int"},
+						{Index: 1, Type: "string"},
+						{Index: 2, Type: "int"},
+					},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 1, Operator: "Prefix", Values: []string{
+									"/etc/cron", "/var/spool/cron",
+									"/etc/systemd/system/", "/etc/init.d/",
+								}},
+								{Index: 2, Operator: "Mask", Values: []string{"O_WRONLY", "O_RDWR", "O_CREAT"}},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) defenseEvasionPolicy(events []cdr.Event, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("cdr-block-defense-evasion-%s", dateStr)
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-cdr-operator",
+				"mitre.attack/technique":     "T1070.002",
+				"mitre.attack/tactic":        "defense-evasion",
+				"policy.qualys.com/priority": "high",
+			},
+			Annotations: map[string]string{
+				"description": "Block log tampering and defense evasion",
+				"event-count": fmt.Sprintf("%d", len(events)),
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_unlinkat",
+					Syscall: true,
+					Args: []Arg{
+						{Index: 0, Type: "int"},
+						{Index: 1, Type: "string"},
+					},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 1, Operator: "Prefix", Values: []string{
+									"/var/log/", "/var/audit/",
+								}},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+				{
+					Call:    "sys_truncate",
+					Syscall: true,
+					Args:    []Arg{{Index: 0, Type: "string"}},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 0, Operator: "Prefix", Values: []string{
+									"/var/log/", "/.bash_history",
+								}},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) lateralMovementPolicy(events []cdr.Event, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("cdr-block-lateral-movement-%s", dateStr)
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-cdr-operator",
+				"mitre.attack/technique":     "T1021.004",
+				"mitre.attack/tactic":        "lateral-movement",
+				"policy.qualys.com/priority": "high",
+			},
+			Annotations: map[string]string{
+				"description": "Block lateral movement via SSH/SCP",
+				"event-count": fmt.Sprintf("%d", len(events)),
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_execve",
+					Syscall: true,
+					Args:    []Arg{{Index: 0, Type: "string"}},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 0, Operator: "Postfix", Values: []string{
+									"/ssh", "/scp", "/sftp", "/rsync",
+								}},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) dataExfiltrationPolicy(events []cdr.Event, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("cdr-block-exfiltration-%s", dateStr)
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-cdr-operator",
+				"mitre.attack/technique":     "T1041",
+				"mitre.attack/tactic":        "exfiltration",
+				"policy.qualys.com/priority": "critical",
+			},
+			Annotations: map[string]string{
+				"description": "Block data exfiltration tools and methods",
+				"event-count": fmt.Sprintf("%d", len(events)),
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_execve",
+					Syscall: true,
+					Args:    []Arg{{Index: 0, Type: "string"}},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 0, Operator: "Postfix", Values: []string{
+									"/base64", "/xxd", "/openssl",
+									"/rclone", "/ftp", "/tftp",
+								}},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+				{
+					Call:    "sys_connect",
+					Syscall: true,
+					Args:    []Arg{{Index: 1, Type: "sockaddr"}},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 1, Operator: "DPort", Values: []string{
+									"20", "21", "69", "873",
+								}},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) webshellPolicy(events []cdr.Event, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("cdr-block-webshell-%s", dateStr)
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-cdr-operator",
+				"mitre.attack/technique":     "T1505.003",
+				"mitre.attack/tactic":        "persistence",
+				"policy.qualys.com/priority": "critical",
+			},
+			Annotations: map[string]string{
+				"description": "Block webshell execution from web servers",
+				"event-count": fmt.Sprintf("%d", len(events)),
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_execve",
+					Syscall: true,
+					Args:    []Arg{{Index: 0, Type: "string"}},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 0, Operator: "Postfix", Values: []string{
+									"/sh", "/bash", "/python", "/php", "/perl",
+								}},
+							},
+							MatchBinaries: []MatchBinary{
+								{Operator: "In", Values: []string{
+									"/usr/sbin/nginx", "/usr/sbin/apache2",
+									"/usr/sbin/httpd", "/usr/bin/php-fpm",
+								}},
+							},
+							MatchActions: []MatchAction{{Action: g.action}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) kernelModulePolicy(events []cdr.Event, dateStr string) *TracingPolicy {
+	name := fmt.Sprintf("cdr-block-kernel-module-%s", dateStr)
+	return &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Name:       name,
+		Metadata: Metadata{
+			Name: name,
+			Labels: map[string]string{
+				"generated-by":               "qualys-cdr-operator",
+				"mitre.attack/technique":     "T1547.006",
+				"mitre.attack/tactic":        "persistence",
+				"policy.qualys.com/priority": "critical",
+			},
+			Annotations: map[string]string{
+				"description": "Block kernel module loading in containers",
+				"event-count": fmt.Sprintf("%d", len(events)),
+			},
+		},
+		Spec: TracingPolicySpec{
+			Kprobes: []Kprobe{
+				{
+					Call:    "sys_init_module",
+					Syscall: true,
+					Selectors: []Selector{
+						{MatchActions: []MatchAction{{Action: g.action}}},
+					},
+				},
+				{
+					Call:    "sys_finit_module",
+					Syscall: true,
+					Selectors: []Selector{
+						{MatchActions: []MatchAction{{Action: g.action}}},
+					},
+				},
+				{
+					Call:    "sys_execve",
+					Syscall: true,
+					Args:    []Arg{{Index: 0, Type: "string"}},
+					Selectors: []Selector{
+						{
+							MatchArgs: []MatchArg{
+								{Index: 0, Operator: "Postfix", Values: []string{
+									"/insmod", "/modprobe", "/rmmod",
 								}},
 							},
 							MatchActions: []MatchAction{{Action: g.action}},

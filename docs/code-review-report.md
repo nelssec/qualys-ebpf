@@ -1,4 +1,4 @@
-# Code Review Report: Qualys eBPF Operator
+# Code Review Report: Qualys CRS Operator
 
 **Date**: 2026-01-09
 **Reviewer**: Automated Analysis + Manual Review
@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-The Qualys eBPF operator codebase has been reviewed using multiple static analysis tools, security scanners, and dependency vulnerability checkers. Several issues were identified and fixed.
+The Qualys CRS operator codebase has been reviewed using multiple static analysis tools, security scanners, and dependency vulnerability checkers. Several issues were identified and fixed.
 
 | Category | Issues Found | Issues Fixed | Remaining |
 |----------|-------------|--------------|-----------|

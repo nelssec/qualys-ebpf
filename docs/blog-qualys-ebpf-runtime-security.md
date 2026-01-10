@@ -1,14 +1,14 @@
-# Qualys eBPF: Enterprise Kubernetes Runtime Security
+# Qualys CRS: Enterprise Kubernetes Runtime Security
 
 ## Introduction
 
 Kubernetes has become the de facto standard for container orchestration, but securing containerized workloads at runtime remains one of the most challenging aspects of cloud-native security. Traditional security tools struggle with the ephemeral nature of containers, the complexity of microservices communication, and the need for real-time threat detection without impacting performance.
 
-**Qualys eBPF** addresses these challenges by combining the power of eBPF (Extended Berkeley Packet Filter) with enterprise-grade security features, providing deep visibility into container behavior while enabling real-time threat prevention.
+**Qualys Container Runtime Security (CRS)** addresses these challenges by combining the power of eBPF (Extended Berkeley Packet Filter) with enterprise-grade security features, providing deep visibility into container behavior while enabling real-time threat prevention.
 
-## What is Qualys eBPF?
+## What is Qualys CRS?
 
-Qualys eBPF is an open-source Kubernetes runtime security solution that leverages Tetragon for eBPF-based enforcement and Cilium for network security. It provides:
+Qualys CRS is an open-source Kubernetes runtime security solution using eBPF-based enforcement via Qualys TracingPolicies and network security via Qualys NetworkPolicies. It provides:
 
 - **49 detection rules** mapped to MITRE ATT&CK techniques
 - **AI-powered anomaly detection** for behavioral analysis
@@ -36,7 +36,7 @@ Each rule is tagged with MITRE ATT&CK techniques and tactics, enabling security 
 
 ### 2. AI-Powered Anomaly Detection
 
-Traditional signature-based detection misses zero-day attacks and novel techniques. Qualys eBPF includes multiple AI/ML algorithms for behavioral anomaly detection:
+Traditional signature-based detection misses zero-day attacks and novel techniques. Qualys CRS includes multiple AI/ML algorithms for behavioral anomaly detection:
 
 **Statistical Analysis:**
 - Z-score detection for sudden metric spikes
@@ -64,7 +64,7 @@ aiDetector:
 
 ### 3. Multi-Cluster Federation
 
-Enterprise environments often span multiple Kubernetes clusters across regions, cloud providers, and environments. Qualys eBPF provides native multi-cluster support through a hub-spoke federation model:
+Enterprise environments often span multiple Kubernetes clusters across regions, cloud providers, and environments. Qualys CRS provides native multi-cluster support through a hub-spoke federation model:
 
 **Hub Cluster:**
 - Central policy management and distribution
@@ -131,7 +131,7 @@ The federation manager correlates events across clusters to detect:
 
 ### 4. Real-Time Response Actions
 
-Detection is only valuable if you can respond quickly. Qualys eBPF provides multiple response options:
+Detection is only valuable if you can respond quickly. Qualys CRS provides multiple response options:
 
 | Action | Description | Use Case |
 |--------|-------------|----------|
@@ -174,7 +174,7 @@ DNS is often overlooked but is a common vector for C2 communication and data exf
 - **Threat Intelligence**: Block queries to known malicious domains (C2, phishing, mining pools)
 - **DGA Detection**: Entropy-based detection of algorithmically generated domains
 - **Query Tracking**: Monitor and analyze DNS patterns for anomalies
-- **Policy Generation**: Automatically generate CiliumNetworkPolicy for DNS blocking
+- **Policy Generation**: Automatically generate Qualys NetworkPolicy for DNS blocking
 
 ### 7. SIEM/SOAR Integration
 
@@ -193,7 +193,7 @@ Security events need to reach your existing tools:
 
 ### eBPF Enforcement Layer
 
-The solution uses Tetragon for syscall-level enforcement:
+The solution uses Qualys TracingPolicies for syscall-level enforcement:
 
 ```yaml
 apiVersion: cilium.io/v1alpha1
@@ -224,7 +224,7 @@ Key advantages of eBPF:
 
 ### Network Security Layer
 
-Cilium provides L3/L4/L7 network enforcement:
+Qualys NetworkPolicies provide L3/L4/L7 network enforcement:
 
 ```yaml
 apiVersion: cilium.io/v2
@@ -300,12 +300,12 @@ Kubernetes runtime security requires a comprehensive approach that combines:
 - Rapid response through automated actions
 - Enterprise scale through multi-cluster federation
 
-Qualys eBPF provides all of these capabilities in an open-source solution that integrates with your existing security stack and Qualys platform.
+Qualys CRS provides all of these capabilities in an open-source solution that integrates with your existing security stack and Qualys platform.
 
 ## Resources
 
 - [GitHub Repository](https://github.com/qualys/qualys-ebpf)
-- [Tetragon Documentation](https://tetragon.io/docs/)
-- [Cilium Network Policies](https://docs.cilium.io/en/stable/security/policy/)
+- [Qualys TracingPolicy Reference](../policies/library/)
+- [Qualys NetworkPolicy Reference](../policies/network/)
 - [MITRE ATT&CK for Containers](https://attack.mitre.org/matrices/enterprise/containers/)
 - [Qualys Container Security](https://www.qualys.com/apps/container-security/)

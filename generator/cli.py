@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI for Qualys eBPF policy generator."""
+"""CLI for Qualys CRS policy generator."""
 import argparse
 import sys
 import os

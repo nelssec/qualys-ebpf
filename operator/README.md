@@ -9,7 +9,7 @@ Enterprise-grade Kubernetes runtime security operator with AI-powered anomaly de
 - **Dynamic IOC Extraction**: Extracts IPs, domains, ports from events
 - **Threat Intel Integration**: Downloads and applies public threat feeds
 - **IP Reputation Checking**: Validates IPs against AbuseIPDB and blocklists
-- **Dual Policy Output**: Generates both Tetragon (syscall) and Cilium (network) policies
+- **Dual Policy Output**: Generates both Qualys TracingPolicies (syscall) and Qualys NetworkPolicies (CNI)
 
 ### Advanced Features
 - **AI Anomaly Detection**: Isolation forest, k-means clustering, z-score, time series analysis
@@ -84,8 +84,8 @@ Enterprise-grade Kubernetes runtime security operator with AI-powered anomaly de
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         Kubernetes Cluster                                   │
 │  ┌───────────────────┐  ┌───────────────────┐  ┌─────────────────────────┐ │
-│  │  TracingPolicy    │  │ CiliumNetworkPolicy│  │  Federation CRDs       │ │
-│  │  (Tetragon)       │  │ (CNI-level)        │  │  FederatedCluster      │ │
+│  │  TracingPolicy    │  │ NetworkPolicy      │  │  Federation CRDs       │ │
+│  │  (Syscall-level)  │  │ (CNI-level)        │  │  FederatedCluster      │ │
 │  │  - sys_execve     │  │ - egressDeny       │  │  FederatedTracingPolicy│ │
 │  │  - sys_connect    │  │ - toCIDR           │  │  FederatedNetworkPolicy│ │
 │  │  - sys_write      │  │ - toFQDNs          │  │                        │ │
@@ -93,7 +93,7 @@ Enterprise-grade Kubernetes runtime security operator with AI-powered anomaly de
 │            │                      │                                        │
 │            v                      v                                        │
 │  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │                    eBPF Enforcement (Tetragon + Cilium)               │ │
+│  │                    Qualys CRS Enforcement Layer                       │ │
 │  │  - Syscall interception and blocking (Sigkill, Override)             │ │
 │  │  - Network filtering (L3/L4/L7, FQDN blocking)                       │ │
 │  │  - LSM hooks for persistent enforcement                              │ │
@@ -185,7 +185,7 @@ policies/
 ├── cdr-block-cloud-creds-20260110.yaml     # Behavior policy
 ├── cdr-block-network-scan-20260110.yaml    # Behavior policy
 ├── cdr-dynamic-blocklist.yaml              # Extracted IOCs
-├── cilium-cdr-blocklist.yaml               # Network policy
+├── qualys-cdr-blocklist.yaml               # Network policy
 └── threat-intel-blocklist.yaml             # Known bad IPs
 ```
 
@@ -236,7 +236,7 @@ Generated 2 behavior policies
 Extracting network indicators from events...
 Extracted: 5 IPs, 0 domains, 2 ports
   Created: policies/cdr-dynamic-blocklist.yaml
-  Created: policies/cilium-cdr-blocklist.yaml
+  Created: policies/qualys-cdr-blocklist.yaml
 
 Loading threat intelligence feeds...
 Loaded 15234 IPs from feodo-c2
@@ -329,7 +329,7 @@ spoke.SendHeartbeat(ctx)
 **Federation CRDs:**
 - `FederatedCluster`: Spoke cluster registration
 - `FederatedTracingPolicy`: Distributed TracingPolicy
-- `FederatedNetworkPolicy`: Distributed CiliumNetworkPolicy
+- `FederatedNetworkPolicy`: Distributed Qualys NetworkPolicy
 
 ### Response Actions (`pkg/response/`)
 
@@ -363,7 +363,7 @@ blocked, reason, threat := monitor.ProcessQuery(&dns.DNSQuery{
 })
 
 // Generate blocking policies
-policy := monitor.GenerateCiliumDNSPolicy(blockedDomains)
+policy := monitor.GenerateDNSPolicy(blockedDomains)
 ```
 
 ### Correlation Engine (`pkg/correlation/`)

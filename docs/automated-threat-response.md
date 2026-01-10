@@ -1,6 +1,6 @@
-# Automating Container Threat Response with Qualys CDR and Tetragon
+# Automating Container Threat Response with Qualys CDR
 
-Detecting threats is only half the battle. The real challenge is responding to them fast enough to prevent damage. This guide explores how to create an automated feedback loop between Qualys Cloud Detection & Response (CDR) and Cilium Tetragon to automatically generate and deploy enforcement policies based on detected threats.
+Detecting threats is only half the battle. The real challenge is responding to them fast enough to prevent damage. This guide explores how to create an automated feedback loop between Qualys Cloud Detection & Response (CDR) and Qualys CRS enforcement to automatically generate and deploy enforcement policies based on detected threats.
 
 ## The Problem: Detection Without Response
 
@@ -27,7 +27,7 @@ By the time security teams analyze alerts and create policies, attackers have of
 
 ## The Solution: Automated Policy Generation
 
-This project closes the loop by automatically generating Tetragon enforcement policies from CDR detection events:
+This project closes the loop by automatically generating Qualys TracingPolicies from CDR detection events:
 
 ```mermaid
 sequenceDiagram
@@ -35,15 +35,15 @@ sequenceDiagram
     participant Container
     participant Qualys CDR
     participant Policy Operator
-    participant Tetragon
+    participant Qualys CRS
 
     Attacker->>Container: Execute attack
     Container->>Qualys CDR: Detection event
     Qualys CDR->>Policy Operator: CDR API (hourly poll)
     Policy Operator->>Policy Operator: Analyze & generate policy
-    Policy Operator->>Tetragon: Apply TracingPolicy
+    Policy Operator->>Qualys CRS: Apply TracingPolicy
     Attacker->>Container: Repeat attack
-    Tetragon->>Attacker: Process killed (Sigkill)
+    Qualys CRS->>Attacker: Process killed (Sigkill)
 ```
 
 ## Architecture Overview
@@ -64,9 +64,9 @@ flowchart TB
             Generate["Generate Policies"]
         end
 
-        subgraph Enforcement["Enforcement Layer"]
-            Tetragon["Tetragon<br/>(eBPF)"]
-            Cilium["Cilium CNI<br/>(Network)"]
+        subgraph Enforcement["Qualys Enforcement Layer"]
+            TracingPolicy["TracingPolicy<br/>(eBPF)"]
+            NetworkPolicy["NetworkPolicy<br/>(CNI)"]
         end
 
         Workloads["Protected Workloads"]
@@ -76,10 +76,10 @@ flowchart TB
     CDR -->|API| Fetch
     Fetch --> Analyze
     Analyze --> Generate
-    Generate -->|TracingPolicy| Tetragon
-    Generate -->|NetworkPolicy| Cilium
-    Tetragon -->|Syscall Enforcement| Workloads
-    Cilium -->|Network Enforcement| Workloads
+    Generate -->|TracingPolicy| TracingPolicy
+    Generate -->|NetworkPolicy| NetworkPolicy
+    TracingPolicy -->|Syscall Enforcement| Workloads
+    NetworkPolicy -->|Network Enforcement| Workloads
 ```
 
 ## Threat Categories and Responses
@@ -234,16 +234,16 @@ When CDR detects `curl` accessing the cloud metadata endpoint:
 sequenceDiagram
     participant curl
     participant Kernel
-    participant Tetragon
+    participant Qualys CRS
     participant CDR
 
     Note over curl: curl 169.254.169.254/...
     curl->>Kernel: sys_connect(169.254.169.254)
-    Kernel->>Tetragon: kprobe triggered
-    Tetragon->>Tetragon: Match: SAddr=169.254.169.254
-    Tetragon->>Tetragon: Match: Binary=/usr/bin/curl
-    Tetragon->>curl: SIGKILL
-    Tetragon->>CDR: Event logged
+    Kernel->>Qualys CRS: kprobe triggered
+    Qualys CRS->>Qualys CRS: Match: SAddr=169.254.169.254
+    Qualys CRS->>Qualys CRS: Match: Binary=/usr/bin/curl
+    Qualys CRS->>curl: SIGKILL
+    Qualys CRS->>CDR: Event logged
 ```
 
 Generated TracingPolicy:
@@ -318,7 +318,7 @@ flowchart TB
         MTTD["Mean Time to Detect<br/>(CDR)"]
         MTTP["Mean Time to Policy<br/>(Operator)"]
         MTTR["Mean Time to Response<br/>(Total)"]
-        Blocked["Attacks Blocked<br/>(Tetragon)"]
+        Blocked["Attacks Blocked<br/>(Qualys CRS)"]
     end
 
     subgraph Formula["Calculation"]
@@ -348,17 +348,17 @@ sequenceDiagram
     participant Container
     participant Qualys CDR
     participant Webhook Server
-    participant Tetragon
+    participant Qualys CRS
 
     Attacker->>Container: Malicious activity
     Container->>Qualys CDR: Detection (ms)
     Qualys CDR->>Webhook Server: POST /webhook/cdr
     Webhook Server->>Webhook Server: Extract IOCs
     Webhook Server->>Webhook Server: Check reputation
-    Webhook Server->>Tetragon: kubectl apply
-    Note over Tetragon: Policy active
+    Webhook Server->>Qualys CRS: kubectl apply
+    Note over Qualys CRS: Policy active
     Attacker->>Container: Repeat attempt
-    Tetragon->>Attacker: SIGKILL
+    Qualys CRS->>Attacker: SIGKILL
 ```
 
 ### Webhook Server Architecture
@@ -466,7 +466,7 @@ gantt
 
 ## Conclusion
 
-Automated threat response transforms container security from reactive to proactive. By connecting Qualys CDR detection to Tetragon enforcement through an automated operator, organizations can:
+Automated threat response transforms container security from reactive to proactive. By connecting Qualys CDR detection to Qualys CRS enforcement through an automated operator, organizations can:
 
 1. **Reduce response time** from hours/days to minutes
 2. **Ensure consistency** in policy generation

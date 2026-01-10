@@ -21,10 +21,10 @@ if ! kubectl cluster-info &> /dev/null; then
     exit 1
 fi
 
-# Check if Tetragon CRDs are installed
+# Check if Qualys CRS is installed
 if ! kubectl get crd tracingpolicies.cilium.io &> /dev/null; then
-    echo "Warning: TracingPolicy CRD not found. Is Tetragon/Qualys CRS installed?"
-    echo "Install with: helm install tetragon cilium/tetragon -n kube-system"
+    echo "Warning: TracingPolicy CRD not found. Is Qualys CRS installed?"
+    echo "Install Qualys CRS sensor to use TracingPolicies."
 fi
 
 # Apply all detection policies
@@ -37,4 +37,4 @@ done
 
 echo ""
 echo "Detection policies deployed successfully!"
-echo "View events with: kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon -f"
+echo "View events with: kubectl logs -n kube-system -l app.kubernetes.io/name=qualys-crs -f"

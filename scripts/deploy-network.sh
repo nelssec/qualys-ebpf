@@ -1,6 +1,6 @@
 #!/bin/bash
 # Deploy network security policies
-# Includes both Tetragon TracingPolicies and Cilium Network Policies
+# Includes both Qualys TracingPolicies and Qualys NetworkPolicies
 
 set -e
 
@@ -12,8 +12,8 @@ echo "Network Security Policy Deployment"
 echo "=========================================="
 echo ""
 echo "This will deploy:"
-echo "  - Tetragon TracingPolicies (syscall-level)"
-echo "  - Cilium Network Policies (CNI-level)"
+echo "  - Qualys TracingPolicies (syscall-level)"
+echo "  - Qualys NetworkPolicies (CNI-level)"
 echo ""
 echo "Some policies will BLOCK traffic. Review before deploying to production."
 echo ""
@@ -59,8 +59,8 @@ echo ""
 echo "Deploying network policies in ${DEPLOY_MODE} mode..."
 echo ""
 
-# Deploy Tetragon policies
-echo "--- Tetragon TracingPolicies ---"
+# Deploy Qualys TracingPolicies
+echo "--- Qualys TracingPolicies ---"
 
 if [ "$DEPLOY_MODE" == "detect" ] || [ "$DEPLOY_MODE" == "full" ]; then
     echo "Applying detection policies..."
@@ -76,18 +76,18 @@ if [ "$DEPLOY_MODE" == "prevent" ] || [ "$DEPLOY_MODE" == "full" ]; then
     kubectl apply -f "${POLICIES_DIR}/block-data-exfiltration.yaml"
 fi
 
-# Deploy Cilium Network Policies
+# Deploy Qualys NetworkPolicies
 echo ""
-echo "--- Cilium Network Policies ---"
+echo "--- Qualys NetworkPolicies ---"
 
 if [ "$DEPLOY_MODE" == "prevent" ] || [ "$DEPLOY_MODE" == "full" ]; then
     echo ""
-    read -p "Deploy Cilium Network Policies? (yes/no): " deploy_cilium
+    read -p "Deploy Qualys NetworkPolicies? (yes/no): " deploy_network
 
-    if [ "$deploy_cilium" == "yes" ]; then
-        echo "Applying Cilium policies..."
+    if [ "$deploy_network" == "yes" ]; then
+        echo "Applying network policies..."
 
-        # Check if Cilium is installed
+        # Check if NetworkPolicy CRDs are installed
         if kubectl get crd ciliumnetworkpolicies.cilium.io &> /dev/null; then
             kubectl apply -f "${POLICIES_DIR}/cilium-block-known-bad-ips.yaml"
             kubectl apply -f "${POLICIES_DIR}/cilium-block-lateral-movement.yaml"
@@ -98,8 +98,8 @@ if [ "$DEPLOY_MODE" == "prevent" ] || [ "$DEPLOY_MODE" == "full" ]; then
                 echo "Applied default deny - make sure to add explicit allows!"
             fi
         else
-            echo "Warning: Cilium CRDs not found. Skipping Cilium policies."
-            echo "Install Cilium CNI to use network policies."
+            echo "Warning: NetworkPolicy CRDs not found. Skipping network policies."
+            echo "Install Qualys CRS to use network policies."
         fi
     fi
 fi
@@ -108,5 +108,4 @@ echo ""
 echo "Network policies deployed successfully!"
 echo ""
 echo "Monitor events:"
-echo "  Tetragon: kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon -f"
-echo "  Cilium:   cilium monitor --type drop"
+echo "  kubectl logs -n kube-system -l app.kubernetes.io/name=qualys-crs -f"

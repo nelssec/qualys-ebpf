@@ -1,6 +1,6 @@
 # Qualys CRS Detection Policies
 
-Auto-generated Tetragon TracingPolicies based on Qualys Container Runtime Security (CRS) detection rules.
+Auto-generated Qualys TracingPolicies based on Qualys Container Runtime Security (CRS) detection rules.
 
 ## Overview
 
@@ -10,7 +10,7 @@ This directory contains **49 detection rules** mapped to MITRE ATT&CK techniques
 |-----------|--------|----------|
 | `detection/` | Post (audit) | Monitor and alert only |
 | `prevention/` | Sigkill (block) | Terminate malicious processes |
-| `network/` | CiliumNetworkPolicy | Block malicious network traffic |
+| `network/` | Qualys NetworkPolicy | Block malicious network traffic |
 | `namespaced/` | Namespace-scoped | Pre-built compliance bundles |
 | `kustomize/` | Environment overlays | Deploy by environment |
 
@@ -86,7 +86,7 @@ spec:
 
 ## Network Policies
 
-Complementary CiliumNetworkPolicies for network-level blocking:
+Complementary Qualys NetworkPolicies for network-level blocking:
 
 | Policy | Blocks |
 |--------|--------|
@@ -119,12 +119,12 @@ These policies integrate with the Qualys CDR Policy Operator:
 
 1. CDR detects threats via API polling or webhooks
 2. Operator generates corresponding TracingPolicies
-3. Tetragon enforces policies at kernel level
+3. Qualys CRS enforces policies at kernel level
 
 See `/operator/` for the Go-based operator implementation.
 
 ## References
 
-- [Tetragon Documentation](https://tetragon.io/docs/)
+- [Qualys TracingPolicy Reference](../library/)
 - [MITRE ATT&CK for Containers](https://attack.mitre.org/matrices/enterprise/containers/)
 - [Qualys CRS Documentation](https://www.qualys.com/docs/qualys-container-security-user-guide.pdf)

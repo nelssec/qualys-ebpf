@@ -1,8 +1,8 @@
-# Policy Library
+# Qualys Policy Library
 
 This directory contains curated security policies aligned with industry best practices from:
 - [Falco Rules](https://github.com/falcosecurity/rules)
-- [Tetragon Policy Library](https://tetragon.io/docs/policy-library/)
+- [Qualys TracingPolicy Reference](../crs-detections/)
 - [MITRE ATT&CK Framework](https://attack.mitre.org/)
 
 ## Maturity Levels

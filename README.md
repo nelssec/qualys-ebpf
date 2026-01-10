@@ -1,6 +1,6 @@
-# Qualys eBPF Threat Detection & Prevention
+# Qualys Container Runtime Security
 
-Enterprise-grade Kubernetes runtime security using Qualys Container Runtime Security (CRS) with Tetragon as the eBPF sensor. Provides real-time threat detection, prevention, and response with AI-powered anomaly detection and multi-cluster federation.
+Enterprise-grade Kubernetes runtime security using Qualys Container Runtime Security (CRS). Provides real-time threat detection, prevention, and response with AI-powered anomaly detection and multi-cluster federation using Qualys TracingPolicies and Qualys NetworkPolicies.
 
 ## Overview
 
@@ -81,13 +81,13 @@ This repository provides:
 │  Cluster: Hub       │    │  Cluster: Spoke 1   │    │  Cluster: Spoke 2   │
 │  ┌───────────────┐  │    │  ┌───────────────┐  │    │  ┌───────────────┐  │
 │  │TracingPolicy  │  │    │  │TracingPolicy  │  │    │  │TracingPolicy  │  │
-│  │CiliumPolicy   │  │    │  │CiliumPolicy   │  │    │  │CiliumPolicy   │  │
+│  │NetworkPolicy  │  │    │  │NetworkPolicy  │  │    │  │NetworkPolicy  │  │
 │  │FederatedCRDs  │  │    │  │(Synced)       │  │    │  │(Synced)       │  │
 │  └───────┬───────┘  │    │  └───────┬───────┘  │    │  └───────┬───────┘  │
 │          v          │    │          v          │    │          v          │
 │  ┌───────────────┐  │    │  ┌───────────────┐  │    │  ┌───────────────┐  │
 │  │eBPF Enforce   │  │    │  │eBPF Enforce   │  │    │  │eBPF Enforce   │  │
-│  │Tetragon+Cilium│  │    │  │Tetragon+Cilium│  │    │  │Tetragon+Cilium│  │
+│  │Qualys Runtime │  │    │  │Qualys Runtime │  │    │  │Qualys Runtime │  │
 │  └───────────────┘  │    │  └───────────────┘  │    │  └───────────────┘  │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
@@ -171,7 +171,7 @@ Located in `policies/fim/`. File integrity monitoring using Qualys FimPolicy CRD
 
 Located in `policies/network/`. Multi-layer network threat detection and blocking:
 
-#### Tetragon TracingPolicies (Syscall-level)
+#### Qualys TracingPolicies (Syscall-level)
 
 | Policy | MITRE ATT&CK | Description |
 |--------|--------------|-------------|
@@ -182,14 +182,14 @@ Located in `policies/network/`. Multi-layer network threat detection and blockin
 | detect-c2-beaconing | T1071 | Monitors HTTP/HTTPS for beacon patterns |
 | block-data-exfiltration | T1041 | Blocks scp, ftp, rclone and exfil ports |
 
-#### Cilium Network Policies (CNI-level)
+#### Qualys Network Policies (CNI-level)
 
 | Policy | Description |
 |--------|-------------|
-| cilium-default-deny-egress | Default deny all egress (whitelist approach) |
-| cilium-block-known-bad-ips | Block known malicious IPs/CIDRs |
-| cilium-allow-essential-egress | Whitelist essential connectivity |
-| cilium-block-lateral-movement | Prevent cross-namespace attacks, block metadata service |
+| qualys-default-deny-egress | Default deny all egress (whitelist approach) |
+| qualys-block-known-bad-ips | Block known malicious IPs/CIDRs |
+| qualys-allow-essential-egress | Whitelist essential connectivity |
+| qualys-block-lateral-movement | Prevent cross-namespace attacks, block metadata service |
 
 ## Quick Start
 
@@ -518,7 +518,7 @@ qualys-ebpf/
 │   ├── detection/               # Audit-mode TracingPolicies
 │   ├── prevention/              # Enforcement-mode TracingPolicies
 │   ├── fim/                     # FimPolicies
-│   ├── network/                 # Network security (Tetragon + Cilium)
+│   ├── network/                 # Network security (Qualys TracingPolicy + NetworkPolicy)
 │   │   ├── block-imds.yaml             # Block cloud metadata service
 │   │   ├── block-crypto-mining-pools.yaml
 │   │   ├── block-reverse-shell-ports.yaml
@@ -694,9 +694,10 @@ Following [Falco's maturity framework](https://github.com/falcosecurity/rules):
 | **incubating** | Robust but may need environment-specific tuning |
 | **sandbox** | Experimental, may have higher false positive rates |
 
-## Cilium Network Policy Structure
+## Qualys Network Policy Structure
 
 ```yaml
+# Compatible with standard CNI NetworkPolicy spec
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -716,7 +717,7 @@ spec:
     - "10.0.0.0/8"  # Block internal ranges
 ```
 
-## Network Match Operators (Tetragon)
+## Network Match Operators (Qualys TracingPolicy)
 
 | Operator | Description |
 |----------|-------------|
@@ -733,7 +734,7 @@ spec:
 This project follows best practices from:
 
 - **[Falco Rules](https://github.com/falcosecurity/rules)** - CNCF graduated runtime security
-- **[Tetragon Policy Library](https://tetragon.io/docs/policy-library/)** - Cilium's eBPF enforcement
+- **[Qualys TracingPolicy Library](policies/library/)** - eBPF enforcement policies
 - **[CrowdStrike Container Security](https://www.crowdstrike.com/products/cloud-security/)** - Similar detection patterns
 - **MITRE ATT&CK Framework** - All policies tagged with techniques
 
@@ -778,9 +779,8 @@ go test ./pkg/... -bench=. -benchmem
 - [Qualys Container Runtime Security](https://docs.qualys.com/en/cs/crs-api/)
 - [Qualys Container Security API](https://docs.qualys.com/en/cs/api/)
 - [Qualys TotalCloud CDR](https://docs.qualys.com/en/cloudview/latest/cloud_detection_and_response/)
-- [Tetragon TracingPolicy](https://tetragon.io/docs/concepts/tracing-policy/)
-- [Tetragon Policy Library](https://tetragon.io/docs/policy-library/)
-- [Cilium Network Policies](https://docs.cilium.io/en/stable/security/policy/)
+- [Qualys TracingPolicy Reference](policies/library/)
+- [Qualys NetworkPolicy Reference](policies/network/)
 - [Falco Rules Repository](https://github.com/falcosecurity/rules)
 - [MITRE ATT&CK](https://attack.mitre.org/)
 - [Qualys API Documentation](https://www.qualys.com/docs/qualys-api-vmpc-user-guide.pdf)
