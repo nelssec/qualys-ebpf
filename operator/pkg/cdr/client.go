@@ -92,7 +92,8 @@ func (c *Client) authenticate(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	// Accept both 200 OK and 201 Created as success
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("auth failed: %s - %s", resp.Status, string(body))
 	}
