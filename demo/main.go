@@ -9,8 +9,10 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
+	"golang.org/x/term"
 	"qualys-policy-operator/pkg/ai"
 	"qualys-policy-operator/pkg/cdr"
 	"qualys-policy-operator/pkg/policy"
@@ -55,6 +57,8 @@ func main() {
 		case "6":
 			demoFullPipeline()
 		case "7":
+			demoLiveCDR()
+		case "8":
 			runAllDemos()
 		case "q", "Q", "0":
 			fmt.Println(colorGreen + "\nThank you for exploring Qualys CRS!" + colorReset)
@@ -92,7 +96,8 @@ func printMenu() {
 	fmt.Println(colorBold + "║" + colorReset + "  4. " + colorGreen + "Multi-Cluster Federation" + colorReset + " - Hub-spoke policy distribution    " + colorBold + "║" + colorReset)
 	fmt.Println(colorBold + "║" + colorReset + "  5. " + colorGreen + "Response Actions" + colorReset + "          - Automated threat response        " + colorBold + "║" + colorReset)
 	fmt.Println(colorBold + "║" + colorReset + "  6. " + colorGreen + "Full Pipeline Demo" + colorReset + "        - End-to-end detection to response " + colorBold + "║" + colorReset)
-	fmt.Println(colorBold + "║" + colorReset + "  7. " + colorYellow + "Run All Demos" + colorReset + "                                              " + colorBold + "║" + colorReset)
+	fmt.Println(colorBold + "║" + colorReset + "  7. " + colorPurple + "Live CDR API Demo" + colorReset + "         - Connect to Qualys & generate    " + colorBold + "║" + colorReset)
+	fmt.Println(colorBold + "║" + colorReset + "  8. " + colorYellow + "Run All Demos" + colorReset + "                                              " + colorBold + "║" + colorReset)
 	fmt.Println(colorBold + "║" + colorReset + "  0. " + colorRed + "Exit" + colorReset + "                                                       " + colorBold + "║" + colorReset)
 	fmt.Println(colorBold + "╚══════════════════════════════════════════════════════════════╝" + colorReset)
 }
@@ -354,18 +359,8 @@ func demoPolicyGeneration() {
 		fmt.Printf("   Priority: %s\n", p.Metadata.Labels["policy.qualys.com/priority"])
 		fmt.Printf("   Action: %s (kernel-level blocking)\n", "Sigkill")
 
-		// Show YAML preview
-		fmt.Println(colorCyan + "\n   Policy Preview:" + colorReset)
-		yamlData, _ := yaml.Marshal(p)
-		lines := strings.Split(string(yamlData), "\n")
-		for i, line := range lines {
-			if i < 15 {
-				fmt.Println("   " + line)
-			}
-		}
-		if len(lines) > 15 {
-			fmt.Printf("   ... (%d more lines)\n", len(lines)-15)
-		}
+		// Show full YAML output
+		printPolicyYAML(p)
 	}
 
 	printSubSection("AI-Driven Policy Generation")
@@ -387,6 +382,9 @@ func demoPolicyGeneration() {
 	printSuccess(fmt.Sprintf("Generated AI-driven policy: %s", aiPolicy.Metadata.Name))
 	fmt.Printf("   Labels: ai.qualys.com/anomaly-type=%s\n", aiPolicy.Metadata.Labels["ai.qualys.com/anomaly-type"])
 	fmt.Printf("   Labels: ai.qualys.com/feature=%s\n", aiPolicy.Metadata.Labels["ai.qualys.com/feature"])
+
+	// Show full YAML for AI policy
+	printPolicyYAML(*aiPolicy)
 }
 
 // =============================================================================
@@ -893,6 +891,9 @@ func demoFullPipeline() {
 		fmt.Printf("   MITRE Technique: %s\n", p.Metadata.Labels["mitre.attack/technique"])
 		fmt.Printf("   Action: Sigkill (kernel-level termination)\n")
 		fmt.Printf("   Syscalls monitored: sys_unshare, sys_setns\n")
+
+		// Show full policy YAML
+		printPolicyYAML(p)
 	}
 
 	time.Sleep(500 * time.Millisecond)
@@ -922,6 +923,203 @@ func demoFullPipeline() {
 	fmt.Printf("   Process blocked at: %sKernel level%s\n", colorGreen, colorReset)
 	fmt.Printf("   Data exfiltrated: %s0 bytes%s\n", colorGreen, colorReset)
 	fmt.Printf("   Clusters protected: %s5/5%s\n", colorGreen, colorReset)
+}
+
+// =============================================================================
+// Helper: Print Full Policy YAML
+// =============================================================================
+
+func printPolicyYAML(p policy.TracingPolicy) {
+	fmt.Println(colorCyan + "\n   ┌─────────────────────────────────────────────────────────────────┐" + colorReset)
+	fmt.Println(colorCyan + "   │ TracingPolicy YAML                                              │" + colorReset)
+	fmt.Println(colorCyan + "   └─────────────────────────────────────────────────────────────────┘" + colorReset)
+
+	yamlData, _ := yaml.Marshal(p)
+	lines := strings.Split(string(yamlData), "\n")
+	for _, line := range lines {
+		if line != "" {
+			fmt.Println(colorWhite + "   " + line + colorReset)
+		}
+	}
+}
+
+// =============================================================================
+// Demo 7: Live CDR API Integration
+// =============================================================================
+
+func demoLiveCDR() {
+	printSection("LIVE CDR API INTEGRATION")
+
+	printInfo("Connect to Qualys CDR API to fetch real detection events")
+	printInfo("Generate TracingPolicies from actual threat data")
+
+	reader := bufio.NewReader(os.Stdin)
+
+	// Platform selection
+	printSubSection("Select Qualys Platform")
+	fmt.Println()
+	fmt.Println("   Available platforms:")
+	fmt.Println("   " + colorCyan + "US1" + colorReset + " - gateway.qg1.apps.qualys.com")
+	fmt.Println("   " + colorCyan + "US2" + colorReset + " - gateway.qg2.apps.qualys.com")
+	fmt.Println("   " + colorCyan + "US3" + colorReset + " - gateway.qg3.apps.qualys.com")
+	fmt.Println("   " + colorCyan + "US4" + colorReset + " - gateway.qg4.apps.qualys.com")
+	fmt.Println("   " + colorCyan + "EU1" + colorReset + " - gateway.qg1.apps.qualys.eu")
+	fmt.Println("   " + colorCyan + "EU2" + colorReset + " - gateway.qg2.apps.qualys.eu")
+	fmt.Println("   " + colorCyan + "CA1" + colorReset + " - gateway.qg1.apps.qualys.ca")
+	fmt.Println("   " + colorCyan + "IN1" + colorReset + " - gateway.qg1.apps.qualys.in")
+	fmt.Println("   " + colorCyan + "UK1" + colorReset + " - gateway.qg1.apps.qualys.co.uk")
+	fmt.Println("   " + colorCyan + "AU1" + colorReset + " - gateway.qg1.apps.qualys.com.au")
+	fmt.Println()
+
+	fmt.Print(colorYellow + "   Enter platform (e.g., US2): " + colorReset)
+	platform, _ := reader.ReadString('\n')
+	platform = strings.TrimSpace(strings.ToUpper(platform))
+
+	gatewayURL := cdr.GetGatewayURL(platform)
+	if gatewayURL == "" {
+		printAlert("Invalid platform. Using US2 as default.")
+		gatewayURL = "gateway.qg2.apps.qualys.com"
+		platform = "US2"
+	}
+
+	printSuccess(fmt.Sprintf("Selected: %s (%s)", platform, gatewayURL))
+
+	// Credentials
+	printSubSection("Enter Credentials")
+	fmt.Println()
+
+	fmt.Print(colorYellow + "   Username: " + colorReset)
+	username, _ := reader.ReadString('\n')
+	username = strings.TrimSpace(username)
+
+	fmt.Print(colorYellow + "   Password: " + colorReset)
+	passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println() // newline after password
+	if err != nil {
+		printAlert("Failed to read password: " + err.Error())
+		return
+	}
+	password := string(passwordBytes)
+
+	if username == "" || password == "" {
+		printAlert("Username and password are required")
+		return
+	}
+
+	printSuccess("Credentials received")
+
+	// Connect to API
+	printSubSection("Connecting to Qualys CDR API")
+
+	client := cdr.NewClient(username, password, gatewayURL)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	printInfo("Fetching events from the last 24 hours...")
+
+	events, err := client.GetDetections(ctx, 24)
+	if err != nil {
+		printAlert("Failed to fetch events: " + err.Error())
+		printInfo("This could be due to:")
+		fmt.Println("   • Invalid credentials")
+		fmt.Println("   • Wrong platform selection")
+		fmt.Println("   • Network connectivity issues")
+		fmt.Println("   • No CDR subscription")
+		return
+	}
+
+	if len(events) == 0 {
+		printWarning("No CDR events found in the last 24 hours")
+		printInfo("Try extending the time range or check if CDR is configured")
+		return
+	}
+
+	printSuccess(fmt.Sprintf("Retrieved %d CDR events", len(events)))
+
+	// Show up to 3 events and generate policies
+	printSubSection("Recent CDR Events")
+
+	maxEvents := 3
+	if len(events) < maxEvents {
+		maxEvents = len(events)
+	}
+
+	selectedEvents := events[:maxEvents]
+
+	for i, e := range selectedEvents {
+		fmt.Println()
+		severityColor := colorYellow
+		if e.Severity >= 8 {
+			severityColor = colorRed
+		} else if e.Severity >= 5 {
+			severityColor = colorYellow
+		} else {
+			severityColor = colorGreen
+		}
+
+		fmt.Printf("   %s━━━ Event %d ━━━%s\n", colorCyan, i+1, colorReset)
+		fmt.Printf("   UUID:      %s\n", e.UUID)
+		fmt.Printf("   Category:  %s%s%s\n", severityColor, e.ThreatCategory, colorReset)
+		fmt.Printf("   Severity:  %s%d/10%s\n", severityColor, e.Severity, colorReset)
+		fmt.Printf("   Timestamp: %s\n", e.Timestamp)
+		if e.ContainerName != "" {
+			fmt.Printf("   Container: %s\n", e.ContainerName)
+		}
+		if e.PodName != "" {
+			fmt.Printf("   Pod:       %s\n", e.PodName)
+		}
+		if e.ProcessName != "" {
+			fmt.Printf("   Process:   %s\n", e.ProcessName)
+		}
+		if e.ImageName != "" {
+			fmt.Printf("   Image:     %s\n", e.ImageName)
+		}
+		fmt.Printf("   Message:   %s\n", e.EventMessage)
+	}
+
+	// Generate policies
+	printSubSection("Generating TracingPolicies from Live Events")
+
+	gen := policy.NewGenerator("Sigkill")
+	policies := gen.FromEvents(selectedEvents)
+
+	if len(policies) == 0 {
+		printWarning("No policies could be generated from the events")
+		printInfo("Events may not match known threat categories")
+		return
+	}
+
+	printSuccess(fmt.Sprintf("Generated %d TracingPolicies", len(policies)))
+
+	for _, p := range policies {
+		fmt.Println()
+		fmt.Printf(colorGreen+"   ✓ Policy: %s"+colorReset+"\n", p.Metadata.Name)
+		if tech, ok := p.Metadata.Labels["mitre.attack/technique"]; ok {
+			fmt.Printf("     MITRE Technique: %s%s%s\n", colorYellow, tech, colorReset)
+		}
+		if prio, ok := p.Metadata.Labels["policy.qualys.com/priority"]; ok {
+			prioColor := colorGreen
+			if prio == "critical" {
+				prioColor = colorRed
+			} else if prio == "high" {
+				prioColor = colorYellow
+			}
+			fmt.Printf("     Priority: %s%s%s\n", prioColor, prio, colorReset)
+		}
+
+		// Show full YAML
+		printPolicyYAML(p)
+	}
+
+	// Summary
+	printSubSection("Summary")
+	fmt.Println()
+	fmt.Printf("   Platform:         %s%s%s\n", colorCyan, platform, colorReset)
+	fmt.Printf("   Events fetched:   %s%d%s\n", colorGreen, len(events), colorReset)
+	fmt.Printf("   Events processed: %s%d%s\n", colorGreen, maxEvents, colorReset)
+	fmt.Printf("   Policies created: %s%d%s\n", colorGreen, len(policies), colorReset)
+	fmt.Println()
+	printInfo("These policies can be applied with: kubectl apply -f <policy>.yaml")
 }
 
 // =============================================================================
