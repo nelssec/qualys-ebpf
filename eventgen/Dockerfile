@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -11,6 +11,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o qcr ./cmd/main.go
 FROM gcr.io/distroless/static-debian12:nonroot AS production
 
 COPY --from=builder /app/qcr /qcr
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/qcr", "version"]
 
 ENTRYPOINT ["/qcr"]
 

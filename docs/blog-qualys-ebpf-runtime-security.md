@@ -245,7 +245,54 @@ spec:
 
 ## Getting Started
 
-### Quick Install
+### QCR CLI (v1.0.3)
+
+The `qcr` binary provides a single tool for CDR integration, policy generation, and drift enforcement:
+
+```bash
+# Download pre-built binary
+curl -LO https://github.com/qualys/qualys-ebpf/releases/latest/download/qcr-linux-amd64
+chmod +x qcr-linux-amd64 && mv qcr-linux-amd64 /usr/local/bin/qcr
+
+# Or build from source
+cd eventgen && make build
+```
+
+### Generate Policies from Live CDR Findings
+
+```bash
+# Set credentials
+export QUALYS_USERNAME=your_username
+export QUALYS_PASSWORD=your_password
+export QUALYS_POD=us2
+
+# Generate enforcement policies from CDR detections
+qcr cdr policy --hours 24 --action Sigkill --namespace production --output ./policies
+
+# Apply to cluster
+kubectl apply -f ./policies/
+```
+
+### Drift Detection & Container Lockdown
+
+Prevent container drift by blocking new executables, script interpreters, and common attack patterns:
+
+```bash
+# Generate full lockdown suite (8 policies)
+qcr drift lockdown --action Sigkill --namespace production --output ./lockdown
+
+# Policies generated:
+# - basic-drift-detection.yaml      (block new binaries)
+# - tmp-exec-block.yaml             (block /tmp execution)
+# - script-interpreter-lockdown.yaml (block shell spawning)
+# - memory-execution-block.yaml     (block memfd_create)
+# - chmod-block.yaml                (block chmod +x)
+# - reverse-shell-block.yaml        (block reverse shells)
+# - network-tool-block.yaml         (block netcat/nmap)
+# - container-tools-block.yaml      (block docker/kubectl)
+```
+
+### Quick Install (Helm)
 
 ```bash
 # Add Helm repo

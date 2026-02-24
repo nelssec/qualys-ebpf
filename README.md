@@ -92,11 +92,107 @@ This repository provides:
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
+## QCR CLI Tool (v1.0.3)
+
+A single Go binary for CDR integration, policy generation, and drift enforcement.
+
+### Installation
+
+```bash
+# Build from source
+cd eventgen && make build
+
+# Or download pre-built binary
+curl -LO https://github.com/qualys/qualys-ebpf/releases/latest/download/qcr-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)
+chmod +x qcr-* && mv qcr-* /usr/local/bin/qcr
+```
+
+### CDR Policy Generation
+
+Generate TracingPolicies from live Qualys CDR findings:
+
+```bash
+# Set credentials
+export QUALYS_USERNAME=your_username
+export QUALYS_PASSWORD=your_password
+export QUALYS_POD=us2  # us1, us2, eu1, eu2, in1, etc.
+
+# Fetch CDR findings
+qcr cdr fetch --hours 24
+
+# Generate policies from findings (audit mode)
+qcr cdr policy --hours 24 --action Post --output ./cdr-policies
+
+# Generate enforcement policies with namespace scoping
+qcr cdr policy --hours 24 --action Sigkill --namespace production --output ./cdr-policies
+
+# Generate with pod label selectors
+qcr cdr policy --hours 24 --action Sigkill --selector "app=nginx,tier=frontend" --output ./cdr-policies
+```
+
+Supported CDR threat categories with specific MITRE mappings:
+- **Crypto Mining** (T1496) - Blocks mining pool ports (3333, 4444, 14433, etc.)
+- **SSH Brute Force** (T1110.001) - Monitors SSH authentication events
+- **Port Scanning** (T1046) - Detects network reconnaissance
+- **Container Escape** (T1611) - Blocks namespace manipulation and runtime sockets
+- **Credential Access** (T1552) - Monitors sensitive file access
+- **Trojan/Malware** (T1204) - Blocks execution from /tmp, /var/tmp, /dev/shm
+
+### Drift Detection & Lockdown
+
+Enforce container immutability with drift detection policies:
+
+```bash
+# List available drift policies
+qcr drift list
+
+# Generate basic drift policy (block new executables)
+qcr drift generate --output ./drift-policies
+
+# Generate full lockdown mode (8 policies)
+qcr drift lockdown --action Sigkill --namespace production --output ./lockdown-policies
+```
+
+Lockdown policies include:
+- **Basic Drift** - Block execution of new binaries not in original image
+- **Tmp Exec Block** - Block execution from /tmp, /var/tmp, /dev/shm
+- **Script Interpreter Lockdown** - Block python/perl/ruby spawning shells
+- **Memory Execution Block** - Block memfd_create (fileless malware)
+- **Chmod Block** - Block chmod +x on any file
+- **Reverse Shell Block** - Block common reverse shell patterns
+- **Network Tool Block** - Block netcat, nmap, curl to suspicious ports
+- **Container Tools Block** - Block docker/kubectl/crictl inside containers
+
+### Vulnerability Correlation
+
+Correlate runtime events with container vulnerabilities:
+
+```bash
+# Fetch vulnerabilities
+qcr vulns fetch --severity-min 4 --output ./vulns.json
+
+# Correlate with CDR events
+qcr vulns correlate --hours 24 --output ./correlations.json
+
+# Analytics (Pareto analysis - top vulns fixing 80% of issues)
+qcr vulns analytics --pareto --top 10
+
+# Export for external scripts
+qcr vulns export --format json --output ./vuln-data.json
+```
+
+### AI-Powered Analysis
+
+```bash
+# Analyze recent events with AI
+qcr ai analyze --hours 24
+```
+
 ## Prerequisites
 
 - Kubernetes cluster with Qualys CRS sensor installed
 - kubectl configured for cluster access
-- Python 3.8+ (for policy generator)
+- Go 1.24+ (for building qcr from source)
 
 ### Installing Qualys CRS
 
@@ -275,50 +371,6 @@ go run ./cmd/main.go \
   --output ./policies
 ```
 
-### Option 3: Python Generator
-
-```bash
-cd generator
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Generate Base Policies
-
-```bash
-# Generate all policy types
-python cli.py generate --type all --output ../generated-policies
-
-# Generate only detection policies
-python cli.py generate --type detection --output ../generated-policies
-
-# Generate namespaced policies
-python cli.py generate --type all --namespace my-namespace --output ../generated-policies
-```
-
-### Fetch from Qualys API
-
-```bash
-# Set credentials
-export QUALYS_USERNAME=your_username
-export QUALYS_PASSWORD=your_password
-export QUALYS_API_URL=https://qualysapi.qualys.com
-
-# Generate policies from Qualys threat data
-python cli.py fetch --severity-min 4 --output ../qualys-policies
-
-# Generate enforcement policies
-python cli.py fetch --severity-min 5 --enforcement --output ../qualys-policies
-```
-
-### List Available Indicators
-
-```bash
-python cli.py list
-python cli.py list --category crypto_miners
-```
-
 ## TracingPolicy Structure
 
 ```yaml
@@ -411,16 +463,13 @@ spec:
 # Set credentials
 export QUALYS_USERNAME=your_username
 export QUALYS_PASSWORD=your_password
+export QUALYS_POD=ca1  # Canada platform
 
-# Generate from CDR detections (Canada platform)
-python generator/cli.py cdr \
-  --platform qualysguard.qg1.apps.qualys.ca \
-  --hours 24 \
-  --severity HIGH \
-  --output ./cdr-policies
+# Generate from CDR detections
+qcr cdr policy --hours 24 --output ./cdr-policies
 
 # Generate enforcement policies
-python generator/cli.py cdr --action Sigkill --output ./cdr-enforcement
+qcr cdr policy --action Sigkill --output ./cdr-enforcement
 ```
 
 ### Available APIs
@@ -446,14 +495,7 @@ The framework integrates with multiple open threat intel feeds:
 ### Automated Updates
 
 ```bash
-# Set optional API keys for premium feeds
-export ABUSEIPDB_API_KEY=your_key
-export OTX_API_KEY=your_key
-
-# Generate blocklist policies from all feeds
-python generator/threat_intel.py --output policies/threat-intel
-
-# Deploy CronJob for daily updates
+# Deploy CronJob for daily threat intel updates
 kubectl apply -f policies/network/threat-intel-cronjob.yaml
 ```
 
@@ -528,11 +570,15 @@ qualys-ebpf/
 │       ├── stable/              # Production-ready policies
 │       ├── incubating/          # Robust but may need tuning
 │       └── sandbox/             # Experimental policies
-├── generator/                   # Python generator (alternative)
-│   ├── cli.py                  # Command-line interface
-│   ├── qualys_cdr_client.py    # Qualys CDR/CS API client
-│   ├── platforms.py            # Platform URL mapping
-│   └── requirements.txt
+├── eventgen/                    # Go CLI tool (qcr)
+│   ├── cmd/main.go             # CLI entrypoint
+│   ├── pkg/
+│   │   ├── qualys/             # Qualys API client
+│   │   ├── drift/              # Drift detection policies
+│   │   ├── policy/             # TracingPolicy generator
+│   │   └── analytics/          # Vulnerability analytics
+│   ├── Dockerfile              # Multi-stage container build
+│   └── Makefile
 ├── scripts/
 │   ├── deploy-detection.sh
 │   ├── deploy-prevention.sh
