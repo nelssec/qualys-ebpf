@@ -8,15 +8,16 @@ COPY cmd/ ./cmd/
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o qcr ./cmd/main.go
 
-FROM cgr.dev/chainguard/static:latest AS production
+FROM gcr.io/distroless/static-debian12:nonroot AS production
 
 COPY --from=builder /app/qcr /qcr
 
 ENTRYPOINT ["/qcr"]
 
-FROM cgr.dev/chainguard/wolfi-base:latest AS eventgen
+FROM alpine:3.20 AS eventgen
 
-RUN apk update && apk add --no-cache \
+RUN apk upgrade --no-cache && \
+    apk add --no-cache \
     bash \
     coreutils \
     findutils \
@@ -27,10 +28,12 @@ RUN apk update && apk add --no-cache \
     openssh-client \
     && rm -rf /var/cache/apk/*
 
+RUN adduser -D -u 10001 qcr
+
 COPY --from=builder /app/qcr /usr/local/bin/qcr
 
 WORKDIR /app
+USER qcr
 
-USER nonroot
 ENTRYPOINT ["/usr/local/bin/qcr"]
 CMD ["events", "-i"]
