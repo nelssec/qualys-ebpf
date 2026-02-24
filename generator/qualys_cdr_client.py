@@ -3,9 +3,12 @@
 import os
 import requests
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime, timedelta
 import json
+
+if TYPE_CHECKING:
+    from vuln_models import ContainerVulnerability
 
 
 @dataclass
@@ -275,6 +278,118 @@ class QualysCDRClient:
         url = f"{self.config.cs_url}/crs/policies"
         data = self._api_request("GET", url)
         return data.get("policies", [])
+
+    def get_images(self, limit: int = 100, filter_running: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get container images from Qualys Container Security.
+
+        Args:
+            limit: Maximum number of images to return
+            filter_running: If True, only return images with running containers
+
+        Returns:
+            List of image data dictionaries
+        """
+        url = f"{self.config.cs_url}/images"
+        params = {"pageSize": limit}
+        if filter_running:
+            params["filter"] = "containers.state:RUNNING"
+
+        data = self._api_request("GET", url, params=params)
+        return data.get("data", [])
+
+    def get_image_vulnerabilities(self, image_id: str) -> List["ContainerVulnerability"]:
+        """
+        Get vulnerabilities for a specific container image.
+
+        Args:
+            image_id: The image ID (sha256)
+
+        Returns:
+            List of ContainerVulnerability objects
+        """
+        from vuln_models import ContainerVulnerability
+
+        url = f"{self.config.cs_url}/images/{image_id}/vuln"
+        data = self._api_request("GET", url)
+
+        vulnerabilities = []
+        for vuln in data.get("vulnerabilities", []):
+            vulnerabilities.append(ContainerVulnerability(
+                vuln_id=vuln.get("qid", str(vuln.get("id", ""))),
+                cve_id=vuln.get("cveId") or vuln.get("cve"),
+                severity=vuln.get("severity", 2),
+                cvss_score=vuln.get("cvssScore") or vuln.get("cvss", {}).get("base"),
+                image_id=image_id,
+                image_name=data.get("imageName", ""),
+                container_ids=data.get("containerIds", []),
+                package_name=vuln.get("packageName", ""),
+                package_path=vuln.get("packagePath", ""),
+                mitre_techniques=vuln.get("mitreTechniques", []),
+                exploitable=vuln.get("exploitable", False),
+                actively_exploited=vuln.get("activelyExploited", False),
+                title=vuln.get("title"),
+                description=vuln.get("description"),
+                fix_version=vuln.get("fixedVersion"),
+                raw_data=vuln,
+            ))
+
+        return vulnerabilities
+
+    def get_running_containers(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get currently running containers from Qualys Container Security.
+
+        Args:
+            limit: Maximum number of containers to return
+
+        Returns:
+            List of container data dictionaries
+        """
+        url = f"{self.config.cs_url}/containers"
+        params = {
+            "pageSize": limit,
+            "filter": "state:RUNNING",
+        }
+
+        data = self._api_request("GET", url, params=params)
+        return data.get("data", [])
+
+    def get_all_vulnerabilities(
+        self,
+        severity_min: int = 3,
+        limit: int = 100,
+        running_only: bool = True
+    ) -> List["ContainerVulnerability"]:
+        """
+        Get all vulnerabilities across container images.
+
+        Args:
+            severity_min: Minimum severity level (1-5)
+            limit: Maximum images to scan
+            running_only: Only include images with running containers
+
+        Returns:
+            List of ContainerVulnerability objects
+        """
+        from vuln_models import ContainerVulnerability
+
+        images = self.get_images(limit=limit, filter_running=running_only)
+        all_vulns: List[ContainerVulnerability] = []
+
+        for image in images:
+            image_id = image.get("imageId") or image.get("id")
+            if not image_id:
+                continue
+
+            vulns = self.get_image_vulnerabilities(image_id)
+            for vuln in vulns:
+                if vuln.severity >= severity_min:
+                    vuln.image_name = image.get("repo", "") or vuln.image_name
+                    vuln.container_ids = image.get("containerIds", vuln.container_ids)
+                    all_vulns.append(vuln)
+
+        return all_vulns
 
     def create_runtime_policy(self, policy: Dict[str, Any]) -> Dict[str, Any]:
         """
