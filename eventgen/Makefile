@@ -1,6 +1,6 @@
 .PHONY: build build-linux build-all docker run clean test
 
-BINARY_NAME=eventgen
+BINARY_NAME=qcr
 VERSION=1.0.0
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)"
@@ -15,19 +15,31 @@ build-linux:
 build-all: build build-linux
 
 docker:
-	docker build -t qualys/eventgen:$(VERSION) -t qualys/eventgen:latest .
+	docker build -t qualys/qcr:$(VERSION) -t qualys/qcr:latest .
 
 run:
-	go run ./cmd/main.go -i
+	./bin/$(BINARY_NAME)
 
-run-all:
-	go run ./cmd/main.go -all -delay 1s
+events:
+	./bin/$(BINARY_NAME) events -i
 
-list:
-	go run ./cmd/main.go -list
+events-list:
+	./bin/$(BINARY_NAME) events -list
+
+events-all:
+	./bin/$(BINARY_NAME) events -all -delay 1s
+
+drift-list:
+	./bin/$(BINARY_NAME) drift list
+
+drift-detect:
+	./bin/$(BINARY_NAME) drift generate -mode detect
+
+drift-enforce:
+	./bin/$(BINARY_NAME) drift generate -mode enforce
 
 clean:
-	rm -rf bin/
+	rm -rf bin/ drift-policies/
 
 test:
-	go run ./cmd/main.go -event QCR001
+	./bin/$(BINARY_NAME) events -event QCR001
