@@ -600,7 +600,7 @@ func execPortScan() error {
 
 func execRawSocket() error {
 	fmt.Println("  Attempting to create raw socket...")
-	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_ICMP)
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, 1)
 	if err != nil {
 		fmt.Printf("  Failed (expected without CAP_NET_RAW): %v\n", err)
 		return nil
