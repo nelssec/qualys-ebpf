@@ -1,4 +1,4 @@
-.PHONY: build build-linux build-all docker run clean test
+.PHONY: build build-linux build-all docker docker-production docker-eventgen run clean test
 
 BINARY_NAME=qcr
 VERSION=1.0.0
@@ -14,8 +14,13 @@ build-linux:
 
 build-all: build build-linux
 
-docker:
-	docker build -t qualys/qcr:$(VERSION) -t qualys/qcr:latest .
+docker-production:
+	docker build --target production -t qualys/qcr:$(VERSION) -t qualys/qcr:latest .
+
+docker-eventgen:
+	docker build --target eventgen -t qualys/qcr-eventgen:$(VERSION) -t qualys/qcr-eventgen:latest .
+
+docker: docker-production docker-eventgen
 
 run:
 	./bin/$(BINARY_NAME)
