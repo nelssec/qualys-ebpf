@@ -1,0 +1,74 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: detect-find-utility
+  labels:
+    generated-by: qualys-crs
+    mitre.attack/technique: T1083
+    mitre.attack/tactic: discovery
+    policy.qualys.com/severity: medium
+    policy.qualys.com/category: reconnaissance
+  annotations:
+    description: Track execution of the find utility for file and directory discovery
+spec:
+  kprobes:
+  # Track when find is executed
+  - call: sys_execve
+    syscall: true
+    args:
+    - index: 0
+      type: string
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: Postfix
+        values:
+        - /find
+        - /gfind
+        - /locate
+        - /mlocate
+      matchActions:
+      - action: Post
+        rateLimit: "1m"
+---
+# Also track file access patterns commonly used with find
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: detect-find-sensitive-files
+  labels:
+    generated-by: qualys-crs
+    mitre.attack/technique: T1083
+    mitre.attack/tactic: discovery
+    policy.qualys.com/severity: high
+  annotations:
+    description: Detect find commands accessing sensitive file patterns
+spec:
+  kprobes:
+  # Track sys_openat calls from find looking for sensitive files
+  - call: sys_openat
+    syscall: true
+    args:
+    - index: 1
+      type: string
+    selectors:
+    - matchBinaries:
+      - operator: In
+        values:
+        - /usr/bin/find
+        - /bin/find
+      matchArgs:
+      - index: 1
+        operator: Postfix
+        values:
+        - .pem
+        - .key
+        - .crt
+        - id_rsa
+        - id_ed25519
+        - .aws/credentials
+        - .kube/config
+        - /etc/shadow
+        - /etc/passwd
+      matchActions:
+      - action: Post

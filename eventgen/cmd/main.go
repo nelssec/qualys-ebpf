@@ -113,8 +113,9 @@ Subcommands:
 	}
 
 	config := qualys.ConfigFromEnv()
-	if config.Username == "" || config.Password == "" {
-		fmt.Println("Error: Set QUALYS_USERNAME and QUALYS_PASSWORD environment variables")
+	if config.AccessToken == "" && (config.Username == "" || config.Password == "") {
+		fmt.Println("Error: Set QUALYS_ACCESS_TOKEN or QUALYS_USERNAME/QUALYS_PASSWORD")
+		fmt.Println("       Also set QUALYS_POD (e.g., us1, us2, eu1)")
 		return
 	}
 

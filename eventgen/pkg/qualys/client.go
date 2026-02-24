@@ -12,21 +12,48 @@ import (
 )
 
 type Config struct {
-	GatewayURL string
-	Username   string
-	Password   string
-	CDRBase    string
-	CSBase     string
+	GatewayURL  string
+	Username    string
+	Password    string
+	AccessToken string
+	CDRBase     string
+	CSBase      string
 }
 
 func ConfigFromEnv() *Config {
-	return &Config{
-		GatewayURL: getEnv("QUALYS_GATEWAY_URL", "gateway.qg1.apps.qualys.ca"),
-		Username:   os.Getenv("QUALYS_USERNAME"),
-		Password:   os.Getenv("QUALYS_PASSWORD"),
-		CDRBase:    "/cdr-api/rest/v1",
-		CSBase:     "/csapi/v1.3",
+	pod := getEnv("QUALYS_POD", "us1")
+	gatewayURL := os.Getenv("QUALYS_GATEWAY_URL")
+	if gatewayURL == "" {
+		gatewayURL = fmt.Sprintf("gateway.qg%s.apps.qualys.com", podToRegion(pod))
 	}
+
+	return &Config{
+		GatewayURL:  gatewayURL,
+		Username:    os.Getenv("QUALYS_USERNAME"),
+		Password:    os.Getenv("QUALYS_PASSWORD"),
+		AccessToken: os.Getenv("QUALYS_ACCESS_TOKEN"),
+		CDRBase:     "/cdr-api/rest/v1",
+		CSBase:      "/csapi/v1.3",
+	}
+}
+
+func podToRegion(pod string) string {
+	regions := map[string]string{
+		"us1": "1",
+		"us2": "2",
+		"us3": "3",
+		"us4": "4",
+		"eu1": "1",
+		"eu2": "2",
+		"in1": "1",
+		"ca1": "1",
+		"ae1": "1",
+		"uk1": "1",
+	}
+	if r, ok := regions[strings.ToLower(pod)]; ok {
+		return r
+	}
+	return "1"
 }
 
 func getEnv(key, defaultVal string) string {
@@ -68,6 +95,16 @@ func (c *Client) getAuthToken() (string, error) {
 		return c.token, nil
 	}
 
+	if c.config.AccessToken != "" {
+		fmt.Println("Note: Using QUALYS_ACCESS_TOKEN (subscription tokens may not work with CDR API)")
+		c.token = c.config.AccessToken
+		return c.token, nil
+	}
+
+	if c.config.Username == "" || c.config.Password == "" {
+		return "", fmt.Errorf("CDR API requires QUALYS_USERNAME and QUALYS_PASSWORD (subscription tokens not supported)")
+	}
+
 	data := url.Values{}
 	data.Set("username", c.config.Username)
 	data.Set("password", c.config.Password)
@@ -85,7 +122,7 @@ func (c *Client) getAuthToken() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return "", fmt.Errorf("auth failed: %d", resp.StatusCode)
 	}
 
@@ -98,13 +135,13 @@ func (c *Client) getAuthToken() (string, error) {
 	return c.token, nil
 }
 
-func (c *Client) apiRequest(method, url string, params map[string]string) ([]byte, error) {
+func (c *Client) apiRequest(method, urlStr string, params map[string]string) ([]byte, error) {
 	token, err := c.getAuthToken()
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequest(method, url, nil)
+	req, err := http.NewRequest(method, urlStr, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -121,17 +158,29 @@ func (c *Client) apiRequest(method, url string, params map[string]string) ([]byt
 		req.URL.RawQuery = q.Encode()
 	}
 
+	if os.Getenv("DEBUG") != "" {
+		fmt.Printf("DEBUG: %s %s\n", method, req.URL.String())
+	}
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
 	if resp.StatusCode != http.StatusOK {
+		if os.Getenv("DEBUG") != "" {
+			fmt.Printf("DEBUG: Response %d: %s\n", resp.StatusCode, string(body))
+		}
 		return nil, fmt.Errorf("API request failed: %d", resp.StatusCode)
 	}
 
-	return io.ReadAll(resp.Body)
+	return body, nil
 }
 
 type CDREvent struct {
