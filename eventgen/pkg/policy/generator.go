@@ -68,8 +68,109 @@ func GenerateFromCDRCategory(category string, action string) *drift.TracingPolic
 		},
 	}
 
+	cat := strings.ToLower(category)
+
 	switch {
-	case strings.Contains(strings.ToLower(category), "container_escape"):
+	case strings.Contains(cat, "bitcoin") || strings.Contains(cat, "mining") || strings.Contains(cat, "crypto"):
+		policy.Metadata.Annotations = map[string]string{
+			"qualys.com/description":      "Block connections to known mining pool ports",
+			"qualys.com/mitre-techniques": "T1496",
+		}
+		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
+			Call:    "sys_connect",
+			Syscall: true,
+			Args:    []drift.Arg{{Index: 1, Type: "sockaddr"}},
+			Selectors: []drift.Selector{{
+				MatchArgs: []drift.MatchArg{{
+					Index:    1,
+					Operator: "DPort",
+					Values:   []string{"3333", "3334", "4444", "5555", "7777", "8888", "9999", "14433", "14444", "45560"},
+				}},
+				MatchActions: []drift.MatchAction{{Action: action}},
+			}},
+		})
+
+	case strings.Contains(cat, "ssh") && strings.Contains(cat, "password"):
+		policy.Metadata.Annotations = map[string]string{
+			"qualys.com/description":      "Block SSH brute force by monitoring auth failures",
+			"qualys.com/mitre-techniques": "T1110.001",
+		}
+		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
+			Call:    "sys_connect",
+			Syscall: true,
+			Args:    []drift.Arg{{Index: 1, Type: "sockaddr"}},
+			Selectors: []drift.Selector{{
+				MatchArgs: []drift.MatchArg{{
+					Index:    1,
+					Operator: "DPort",
+					Values:   []string{"22"},
+				}},
+				MatchActions: []drift.MatchAction{{Action: action}},
+			}},
+		})
+
+	case strings.Contains(cat, "rdp"):
+		policy.Metadata.Annotations = map[string]string{
+			"qualys.com/description":      "Block RDP brute force attempts",
+			"qualys.com/mitre-techniques": "T1110.001",
+		}
+		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
+			Call:    "sys_connect",
+			Syscall: true,
+			Args:    []drift.Arg{{Index: 1, Type: "sockaddr"}},
+			Selectors: []drift.Selector{{
+				MatchArgs: []drift.MatchArg{{
+					Index:    1,
+					Operator: "DPort",
+					Values:   []string{"3389"},
+				}},
+				MatchActions: []drift.MatchAction{{Action: action}},
+			}},
+		})
+
+	case strings.Contains(cat, "scan") || strings.Contains(cat, "port"):
+		policy.Metadata.Annotations = map[string]string{
+			"qualys.com/description":      "Block network scanning tools",
+			"qualys.com/mitre-techniques": "T1046",
+		}
+		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
+			Call:    "sys_execve",
+			Syscall: true,
+			Args:    []drift.Arg{{Index: 0, Type: "string"}},
+			Selectors: []drift.Selector{{
+				MatchArgs: []drift.MatchArg{{
+					Index:    0,
+					Operator: "Postfix",
+					Values:   []string{"/nmap", "/masscan", "/zmap", "/netcat", "/nc", "/hping3"},
+				}},
+				MatchActions: []drift.MatchAction{{Action: action}},
+			}},
+		})
+
+	case strings.Contains(cat, "trojan") || strings.Contains(cat, "malware") || strings.Contains(cat, "backdoor"):
+		policy.Metadata.Annotations = map[string]string{
+			"qualys.com/description":      "Block execution from temp/writable directories",
+			"qualys.com/mitre-techniques": "T1204",
+		}
+		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
+			Call:    "sys_execve",
+			Syscall: true,
+			Args:    []drift.Arg{{Index: 0, Type: "string"}},
+			Selectors: []drift.Selector{{
+				MatchArgs: []drift.MatchArg{{
+					Index:    0,
+					Operator: "Prefix",
+					Values:   []string{"/tmp/", "/var/tmp/", "/dev/shm/", "/run/"},
+				}},
+				MatchActions: []drift.MatchAction{{Action: action}},
+			}},
+		})
+
+	case strings.Contains(cat, "container_escape") || strings.Contains(cat, "escape"):
+		policy.Metadata.Annotations = map[string]string{
+			"qualys.com/description":      "Block container escape via namespace manipulation",
+			"qualys.com/mitre-techniques": "T1611",
+		}
 		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
 			Call:    "sys_unshare",
 			Syscall: true,
@@ -81,31 +182,17 @@ func GenerateFromCDRCategory(category string, action string) *drift.TracingPolic
 		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
 			Call:    "sys_setns",
 			Syscall: true,
-			Args: []drift.Arg{
-				{Index: 0, Type: "int"},
-				{Index: 1, Type: "int"},
-			},
+			Args:    []drift.Arg{{Index: 0, Type: "int"}, {Index: 1, Type: "int"}},
 			Selectors: []drift.Selector{{
 				MatchActions: []drift.MatchAction{{Action: action}},
 			}},
 		})
 
-	case strings.Contains(strings.ToLower(category), "crypto_mining"):
-		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
-			Call:    "sys_connect",
-			Syscall: true,
-			Args:    []drift.Arg{{Index: 1, Type: "sockaddr"}},
-			Selectors: []drift.Selector{{
-				MatchArgs: []drift.MatchArg{{
-					Index:    1,
-					Operator: "DPort",
-					Values:   []string{"3333", "4444", "5555", "14433", "14444"},
-				}},
-				MatchActions: []drift.MatchAction{{Action: action}},
-			}},
-		})
-
-	case strings.Contains(strings.ToLower(category), "credential"):
+	case strings.Contains(cat, "credential"):
+		policy.Metadata.Annotations = map[string]string{
+			"qualys.com/description":      "Block access to credential files",
+			"qualys.com/mitre-techniques": "T1552.001",
+		}
 		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
 			Call:    "sys_openat",
 			Syscall: true,
@@ -114,43 +201,16 @@ func GenerateFromCDRCategory(category string, action string) *drift.TracingPolic
 				MatchArgs: []drift.MatchArg{{
 					Index:    1,
 					Operator: "Postfix",
-					Values:   []string{"/etc/shadow", "/etc/passwd", "/.ssh/id_rsa", "/.aws/credentials"},
-				}},
-				MatchActions: []drift.MatchAction{{Action: action}},
-			}},
-		})
-
-	case strings.Contains(strings.ToLower(category), "c2") || strings.Contains(strings.ToLower(category), "communication"):
-		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
-			Call:    "sys_connect",
-			Syscall: true,
-			Args:    []drift.Arg{{Index: 1, Type: "sockaddr"}},
-			Selectors: []drift.Selector{{
-				MatchArgs: []drift.MatchArg{{
-					Index:    1,
-					Operator: "DPort",
-					Values:   []string{"4444", "5555", "6666", "8443"},
-				}},
-				MatchActions: []drift.MatchAction{{Action: action}},
-			}},
-		})
-
-	case strings.Contains(strings.ToLower(category), "network_scan"):
-		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
-			Call:    "sys_execve",
-			Syscall: true,
-			Args:    []drift.Arg{{Index: 0, Type: "string"}},
-			Selectors: []drift.Selector{{
-				MatchArgs: []drift.MatchArg{{
-					Index:    0,
-					Operator: "Postfix",
-					Values:   []string{"/nmap", "/masscan", "/zmap", "/netcat", "/nc"},
+					Values:   []string{"/etc/shadow", "/.ssh/id_rsa", "/.aws/credentials", "/.kube/config"},
 				}},
 				MatchActions: []drift.MatchAction{{Action: action}},
 			}},
 		})
 
 	default:
+		policy.Metadata.Annotations = map[string]string{
+			"qualys.com/description": fmt.Sprintf("Generic detection for %s", category),
+		}
 		policy.Spec.KProbes = append(policy.Spec.KProbes, drift.KProbe{
 			Call:    "sys_execve",
 			Syscall: true,

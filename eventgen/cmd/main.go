@@ -15,6 +15,7 @@ import (
 	"github.com/qualys/eventgen/pkg/analytics"
 	"github.com/qualys/eventgen/pkg/drift"
 	"github.com/qualys/eventgen/pkg/events"
+	"github.com/qualys/eventgen/pkg/policy"
 	"github.com/qualys/eventgen/pkg/qualys"
 	"github.com/qualys/eventgen/pkg/vuln"
 	"gopkg.in/yaml.v3"
@@ -36,6 +37,8 @@ func main() {
 		eventsCmd(os.Args[2:])
 	case "vulns":
 		vulnsCmd(os.Args[2:])
+	case "cdr":
+		cdrCmd(os.Args[2:])
 	case "drift":
 		driftCmd(os.Args[2:])
 	case "ai":
@@ -58,6 +61,7 @@ Usage:
 
 Commands:
   events      Security event generator for CRS testing
+  cdr         Fetch CDR findings and generate policies
   vulns       Vulnerability correlation and analytics
   drift       Container drift management policies
   ai          AI-powered vulnerability analysis
@@ -229,6 +233,131 @@ Subcommands:
 
 	default:
 		fmt.Printf("Unknown vulns subcommand: %s\n", args[0])
+	}
+}
+
+func cdrCmd(args []string) {
+	if len(args) == 0 {
+		fmt.Println(`Usage: qcr cdr <subcommand>
+
+Subcommands:
+  fetch       Fetch CDR findings from Qualys
+  policy      Generate TracingPolicy from CDR findings`)
+		return
+	}
+
+	config := qualys.ConfigFromEnv()
+	if config.AccessToken == "" && (config.Username == "" || config.Password == "") {
+		fmt.Println("Error: Set QUALYS_USERNAME/QUALYS_PASSWORD or QUALYS_ACCESS_TOKEN")
+		fmt.Println("       Set QUALYS_POD for platform (us1, us2, eu1, etc)")
+		return
+	}
+
+	client := qualys.NewClient(config)
+
+	switch args[0] {
+	case "fetch":
+		fs := flag.NewFlagSet("cdr fetch", flag.ExitOnError)
+		hours := fs.Int("hours", 24, "Look back period in hours")
+		severity := fs.String("severity", "", "Filter by severity (LOW, MEDIUM, HIGH, CRITICAL)")
+		limit := fs.Int("limit", 100, "Max events to fetch")
+		output := fs.String("output", "", "Output file (JSON)")
+		fs.Parse(args[1:])
+
+		fmt.Printf("Fetching CDR findings (last %d hours)...\n", *hours)
+		events, err := client.GetCDRDetections(*hours, *severity, "container", *limit)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+		fmt.Printf("Found %d findings\n", len(events))
+
+		if len(events) > 0 {
+			fmt.Println("\nTop findings:")
+			for i, e := range events {
+				if i >= 10 {
+					break
+				}
+				sev := qualys.SeverityToString(e.Severity)
+				fmt.Printf("  [%s] %s - %s\n", sev, e.EventType, e.Description)
+			}
+		}
+
+		if *output != "" {
+			data, _ := json.MarshalIndent(events, "", "  ")
+			os.WriteFile(*output, data, 0644)
+			fmt.Printf("\nSaved to %s\n", *output)
+		}
+
+	case "policy":
+		fs := flag.NewFlagSet("cdr policy", flag.ExitOnError)
+		hours := fs.Int("hours", 24, "Look back period in hours")
+		action := fs.String("action", "Post", "Policy action (Post=alert, Sigkill=block)")
+		namespace := fs.String("namespace", "", "Kubernetes namespace to scope policies")
+		labelSelector := fs.String("selector", "", "Pod label selector (e.g., app=nginx)")
+		output := fs.String("output", "./cdr-policies", "Output directory")
+		fs.Parse(args[1:])
+
+		fmt.Printf("Fetching CDR findings (last %d hours)...\n", *hours)
+		events, err := client.GetCDRDetections(*hours, "", "container", 100)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+		fmt.Printf("Found %d findings\n", len(events))
+
+		categories := make(map[string]int)
+		for _, e := range events {
+			if e.EventType != "" {
+				categories[e.EventType]++
+			}
+		}
+
+		if len(categories) == 0 {
+			fmt.Println("No threat categories found in events")
+			return
+		}
+
+		fmt.Printf("\nThreat categories detected:\n")
+		for cat, count := range categories {
+			fmt.Printf("  %s: %d events\n", cat, count)
+		}
+
+		os.MkdirAll(*output, 0755)
+
+		scopeInfo := ""
+		if *namespace != "" {
+			scopeInfo += fmt.Sprintf(" namespace=%s", *namespace)
+		}
+		if *labelSelector != "" {
+			scopeInfo += fmt.Sprintf(" selector=%s", *labelSelector)
+		}
+		fmt.Printf("\nGenerating policies (action=%s%s)...\n", *action, scopeInfo)
+
+		for cat := range categories {
+			p := policy.GenerateFromCDRCategory(cat, *action)
+
+			if *namespace != "" || *labelSelector != "" {
+				p.Spec.PodSelector = &drift.PodSelector{}
+				if *namespace != "" {
+					p.Spec.PodSelector.Namespace = *namespace
+				}
+				if *labelSelector != "" {
+					parts := strings.SplitN(*labelSelector, "=", 2)
+					if len(parts) == 2 {
+						p.Spec.PodSelector.MatchLabels = map[string]string{parts[0]: parts[1]}
+					}
+				}
+			}
+
+			data, _ := yaml.Marshal(p)
+			filename := fmt.Sprintf("%s/%s.yaml", *output, p.Metadata.Name)
+			os.WriteFile(filename, data, 0644)
+			fmt.Printf("  Generated: %s\n", filename)
+		}
+
+	default:
+		fmt.Printf("Unknown cdr subcommand: %s\n", args[0])
 	}
 }
 
