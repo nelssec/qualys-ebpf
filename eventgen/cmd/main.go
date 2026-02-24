@@ -130,7 +130,6 @@ Subcommands:
 		fs.Parse(args[1:])
 
 		fmt.Printf("Fetching vulnerabilities (severity >= %d)...\n", *severityMin)
-		fmt.Println("Note: This requires Qualys Container Security API access")
 
 		vulnData := []map[string]interface{}{
 			{"vuln_id": "QID-12345", "cve_id": "CVE-2024-1234", "severity": 4, "package": "openssl"},
@@ -249,38 +248,50 @@ Subcommands:
 
 	case "generate":
 		fs := flag.NewFlagSet("drift generate", flag.ExitOnError)
-		mode := fs.String("mode", "detect", "detect or enforce")
+		mode := fs.String("mode", "detect", "detect, enforce, or lockdown")
 		namespace := fs.String("namespace", "", "Kubernetes namespace")
 		output := fs.String("output", "./drift-policies", "Output directory")
 		policyType := fs.String("policy", "all", "Policy type: all, drift, binary-paths, package-managers")
 		fs.Parse(args[1:])
 
 		os.MkdirAll(*output, 0755)
-		enforce := *mode == "enforce"
 
 		var policies []*drift.TracingPolicy
 
-		switch *policyType {
-		case "all":
-			if enforce {
+		switch *mode {
+		case "lockdown":
+			policies = append(policies, drift.GenerateDriftEnforcementPolicy(*namespace))
+			policies = append(policies, drift.GenerateBinaryPathEnforcementPolicy(*namespace))
+			policies = append(policies, drift.GeneratePackageManagerBlockPolicy(*namespace, true))
+			policies = append(policies, drift.GenerateDownloadToolBlockPolicy(*namespace, true))
+			policies = append(policies, drift.GenerateScriptInterpreterLockdownPolicy(*namespace))
+			policies = append(policies, drift.GenerateMemoryExecutionBlockPolicy(*namespace))
+			policies = append(policies, drift.GenerateChmodBlockPolicy(*namespace))
+			policies = append(policies, drift.GenerateReverseShellBlockPolicy(*namespace))
+		case "enforce":
+			switch *policyType {
+			case "all":
 				policies = append(policies, drift.GenerateDriftEnforcementPolicy(*namespace))
 				policies = append(policies, drift.GenerateBinaryPathEnforcementPolicy(*namespace))
 				policies = append(policies, drift.GeneratePackageManagerBlockPolicy(*namespace, true))
 				policies = append(policies, drift.GenerateDownloadToolBlockPolicy(*namespace, true))
-			} else {
+			case "drift":
+				policies = append(policies, drift.GenerateDriftEnforcementPolicy(*namespace))
+			case "binary-paths":
+				policies = append(policies, drift.GenerateBinaryPathEnforcementPolicy(*namespace))
+			case "package-managers":
+				policies = append(policies, drift.GeneratePackageManagerBlockPolicy(*namespace, true))
+			}
+		default:
+			switch *policyType {
+			case "all":
 				policies = append(policies, drift.GenerateDriftDetectionPolicy(*namespace))
 				policies = append(policies, drift.GeneratePackageManagerBlockPolicy(*namespace, false))
-			}
-		case "drift":
-			if enforce {
-				policies = append(policies, drift.GenerateDriftEnforcementPolicy(*namespace))
-			} else {
+			case "drift":
 				policies = append(policies, drift.GenerateDriftDetectionPolicy(*namespace))
+			case "package-managers":
+				policies = append(policies, drift.GeneratePackageManagerBlockPolicy(*namespace, false))
 			}
-		case "binary-paths":
-			policies = append(policies, drift.GenerateBinaryPathEnforcementPolicy(*namespace))
-		case "package-managers":
-			policies = append(policies, drift.GeneratePackageManagerBlockPolicy(*namespace, enforce))
 		}
 
 		for _, p := range policies {

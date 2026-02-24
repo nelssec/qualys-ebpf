@@ -96,13 +96,12 @@ func (c *Client) getAuthToken() (string, error) {
 	}
 
 	if c.config.AccessToken != "" {
-		fmt.Println("Note: Using QUALYS_ACCESS_TOKEN (subscription tokens may not work with CDR API)")
 		c.token = c.config.AccessToken
 		return c.token, nil
 	}
 
 	if c.config.Username == "" || c.config.Password == "" {
-		return "", fmt.Errorf("CDR API requires QUALYS_USERNAME and QUALYS_PASSWORD (subscription tokens not supported)")
+		return "", fmt.Errorf("set QUALYS_USERNAME and QUALYS_PASSWORD")
 	}
 
 	data := url.Values{}

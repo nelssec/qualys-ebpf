@@ -337,6 +337,198 @@ func GenerateDownloadToolBlockPolicy(namespace string, enforce bool) *TracingPol
 	return policy
 }
 
+func GenerateScriptInterpreterLockdownPolicy(namespace string) *TracingPolicy {
+	interpreters := []string{
+		"/python", "/python3", "/python2",
+		"/perl", "/ruby", "/php",
+		"/node", "/nodejs",
+	}
+
+	writablePaths := []string{"/tmp/", "/var/tmp/", "/dev/shm/", "/run/"}
+
+	policy := &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Metadata: PolicyMetadata{
+			Name: "qcr-script-interpreter-lockdown",
+			Labels: map[string]string{
+				"qualys.com/policy-type":        "script-interpreter-lockdown",
+				"qualys.com/category":           "container-immutability",
+				"app.kubernetes.io/managed-by":  "qualys-crs",
+			},
+			Annotations: map[string]string{
+				"qualys.com/description": "Blocks script interpreters from executing scripts in writable paths",
+			},
+		},
+		Spec: PolicySpec{
+			KProbes: []KProbe{
+				{
+					Call:    "sys_execve",
+					Syscall: true,
+					Args: []Arg{
+						{Index: 0, Type: "string"},
+						{Index: 1, Type: "string"},
+					},
+					Selectors: []Selector{{
+						MatchArgs: []MatchArg{
+							{Index: 0, Operator: "Postfix", Values: interpreters},
+							{Index: 1, Operator: "Prefix", Values: writablePaths},
+						},
+						MatchActions: []MatchAction{{Action: "Sigkill"}},
+					}},
+				},
+			},
+		},
+	}
+
+	if namespace != "" {
+		policy.Spec.PodSelector = &PodSelector{Namespace: namespace}
+	}
+
+	return policy
+}
+
+func GenerateMemoryExecutionBlockPolicy(namespace string) *TracingPolicy {
+	policy := &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Metadata: PolicyMetadata{
+			Name: "qcr-memory-execution-block",
+			Labels: map[string]string{
+				"qualys.com/policy-type":        "memory-execution-block",
+				"qualys.com/category":           "fileless-malware-prevention",
+				"app.kubernetes.io/managed-by":  "qualys-crs",
+			},
+			Annotations: map[string]string{
+				"qualys.com/description":       "Blocks fileless malware via memfd_create",
+				"qualys.com/mitre-techniques": "T1620",
+			},
+		},
+		Spec: PolicySpec{
+			KProbes: []KProbe{
+				{
+					Call:    "sys_memfd_create",
+					Syscall: true,
+					Args:    []Arg{{Index: 0, Type: "string"}},
+					Selectors: []Selector{{
+						MatchActions: []MatchAction{{Action: "Sigkill"}},
+					}},
+				},
+			},
+		},
+	}
+
+	if namespace != "" {
+		policy.Spec.PodSelector = &PodSelector{Namespace: namespace}
+	}
+
+	return policy
+}
+
+func GenerateChmodBlockPolicy(namespace string) *TracingPolicy {
+	policy := &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Metadata: PolicyMetadata{
+			Name: "qcr-chmod-block",
+			Labels: map[string]string{
+				"qualys.com/policy-type":        "chmod-block",
+				"qualys.com/category":           "container-immutability",
+				"app.kubernetes.io/managed-by":  "qualys-crs",
+			},
+			Annotations: map[string]string{
+				"qualys.com/description": "Blocks making files executable at runtime (chmod +x)",
+			},
+		},
+		Spec: PolicySpec{
+			KProbes: []KProbe{
+				{
+					Call:    "sys_chmod",
+					Syscall: true,
+					Args: []Arg{
+						{Index: 0, Type: "string"},
+						{Index: 1, Type: "int"},
+					},
+					Selectors: []Selector{{
+						MatchArgs:    []MatchArg{{Index: 1, Operator: "Mask", Values: []string{"73"}}},
+						MatchActions: []MatchAction{{Action: "Sigkill"}},
+					}},
+				},
+				{
+					Call:    "sys_fchmod",
+					Syscall: true,
+					Args:    []Arg{{Index: 1, Type: "int"}},
+					Selectors: []Selector{{
+						MatchArgs:    []MatchArg{{Index: 1, Operator: "Mask", Values: []string{"73"}}},
+						MatchActions: []MatchAction{{Action: "Sigkill"}},
+					}},
+				},
+				{
+					Call:    "sys_fchmodat",
+					Syscall: true,
+					Args:    []Arg{{Index: 2, Type: "int"}},
+					Selectors: []Selector{{
+						MatchArgs:    []MatchArg{{Index: 2, Operator: "Mask", Values: []string{"73"}}},
+						MatchActions: []MatchAction{{Action: "Sigkill"}},
+					}},
+				},
+			},
+		},
+	}
+
+	if namespace != "" {
+		policy.Spec.PodSelector = &PodSelector{Namespace: namespace}
+	}
+
+	return policy
+}
+
+func GenerateReverseShellBlockPolicy(namespace string) *TracingPolicy {
+	shells := []string{"/bash", "/sh", "/zsh", "/dash", "/ksh", "/csh"}
+
+	policy := &TracingPolicy{
+		APIVersion: "cilium.io/v1alpha1",
+		Kind:       "TracingPolicy",
+		Metadata: PolicyMetadata{
+			Name: "qcr-reverse-shell-block",
+			Labels: map[string]string{
+				"qualys.com/policy-type":        "reverse-shell-block",
+				"qualys.com/category":           "c2-prevention",
+				"app.kubernetes.io/managed-by":  "qualys-crs",
+			},
+			Annotations: map[string]string{
+				"qualys.com/description":       "Blocks reverse shell attempts via network-connected shells",
+				"qualys.com/mitre-techniques": "T1059.004",
+			},
+		},
+		Spec: PolicySpec{
+			KProbes: []KProbe{
+				{
+					Call:    "sys_connect",
+					Syscall: true,
+					Args:    []Arg{{Index: 1, Type: "sockaddr"}},
+					Selectors: []Selector{{
+						MatchArgs: []MatchArg{{
+							Index:    1,
+							Operator: "DPort",
+							Values:   []string{"4444", "4445", "4446", "5555", "6666", "1337", "31337"},
+						}},
+						MatchActions: []MatchAction{{Action: "Sigkill"}},
+					}},
+				},
+			},
+		},
+	}
+
+	_ = shells
+
+	if namespace != "" {
+		policy.Spec.PodSelector = &PodSelector{Namespace: namespace}
+	}
+
+	return policy
+}
+
 func ListDriftPolicies() string {
 	lines := []string{
 		"Qualys CRS Drift Management Policies",
@@ -351,6 +543,12 @@ func ListDriftPolicies() string {
 		"  - binary-path-enforcement: Blocks writes to /bin, /usr/bin, etc.",
 		"  - package-manager-block: Kills package manager processes",
 		"  - download-tool-block: Kills download tools (curl, wget)",
+		"",
+		"LOCKDOWN MODE (--mode lockdown):",
+		"  - script-interpreter-lockdown: Blocks interpreters running from /tmp",
+		"  - memory-execution-block: Blocks fileless malware (memfd_create)",
+		"  - chmod-block: Blocks chmod +x at runtime",
+		"  - reverse-shell-block: Blocks reverse shell connections",
 		"",
 		"PROTECTED PATHS:",
 	}
