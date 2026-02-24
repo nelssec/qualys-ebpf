@@ -1,7 +1,7 @@
 .PHONY: build build-linux build-all docker docker-production docker-eventgen run clean test
 
 BINARY_NAME=qcr
-VERSION=1.0.0
+VERSION=1.0.3
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)"
 
