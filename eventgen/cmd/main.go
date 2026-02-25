@@ -13,6 +13,7 @@ import (
 
 	"github.com/qualys/eventgen/pkg/ai"
 	"github.com/qualys/eventgen/pkg/analytics"
+	"github.com/qualys/eventgen/pkg/sbom"
 	"github.com/qualys/eventgen/pkg/drift"
 	"github.com/qualys/eventgen/pkg/events"
 	"github.com/qualys/eventgen/pkg/policy"
@@ -43,6 +44,8 @@ func main() {
 		driftCmd(os.Args[2:])
 	case "ai":
 		aiCmd(os.Args[2:])
+	case "sbom":
+		sbomCmd(os.Args[2:])
 	case "version":
 		fmt.Printf("Qualys CRS CLI v%s (%s)\n", version, buildTime)
 	case "help", "-h", "--help":
@@ -64,6 +67,7 @@ Commands:
   cdr         Fetch CDR findings and generate policies
   vulns       Vulnerability correlation and analytics
   drift       Container drift management policies
+  sbom        Software BOM generation (CycloneDX/SPDX)
   ai          AI-powered vulnerability analysis
   version     Show version
   help        Show this help
@@ -662,4 +666,74 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max-3] + "..."
+}
+
+func sbomCmd(args []string) {
+	fs := flag.NewFlagSet("sbom", flag.ExitOnError)
+	imageID := fs.String("image", "", "Image ID to generate SBOM for")
+	runningOnly := fs.Bool("running", false, "Generate SBOMs for all running containers")
+	format := fs.String("format", "cyclonedx", "Output format: cyclonedx, spdx")
+	output := fs.String("output", "", "Output file (default: stdout)")
+	fs.Parse(args)
+
+	config := qualys.ConfigFromEnv()
+	if config.AccessToken == "" && (config.Username == "" || config.Password == "") {
+		fmt.Println("Error: Set QUALYS_USERNAME/QUALYS_PASSWORD or QUALYS_ACCESS_TOKEN")
+		return
+	}
+
+	client := qualys.NewClient(config)
+	generator := sbom.NewGenerator(client)
+
+	if *runningOnly {
+		sboms, err := generator.GenerateFromRunningContainers(100)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+
+		for _, s := range sboms {
+			outputSBOM(s, *format, *output)
+		}
+		fmt.Printf("Generated %d SBOMs\n", len(sboms))
+		return
+	}
+
+	if *imageID == "" {
+		fmt.Println("Error: Specify --image or --running")
+		fs.Usage()
+		return
+	}
+
+	s, err := generator.GenerateFromImage(*imageID, true)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	outputSBOM(s, *format, *output)
+}
+
+func outputSBOM(s *sbom.CBOM, format, output string) {
+	var data []byte
+	var err error
+
+	switch format {
+	case "spdx":
+		data, err = s.ToSPDX()
+	default:
+		data, err = s.ToJSON()
+	}
+
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	if output != "" {
+		os.WriteFile(output, data, 0644)
+		fmt.Printf("Written to %s\n", output)
+	} else {
+		fmt.Println(string(data))
+	}
 }
