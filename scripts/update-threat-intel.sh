@@ -1,45 +1,51 @@
 #!/bin/bash
-# Update threat intelligence feeds and regenerate blocklist policies
-# Run this periodically (e.g., via CronJob) to keep blocklists current
+# Update threat intelligence by fetching CDR findings and generating policies
+#
+# Requires Qualys credentials:
+#   QUALYS_USERNAME + QUALYS_PASSWORD, or QUALYS_ACCESS_TOKEN
+#   QUALYS_POD (e.g., us1, us2, eu1)
+#
+# Usage:
+#   ./update-threat-intel.sh                  # fetch + generate policies
+#   ./update-threat-intel.sh --apply          # also apply policies to cluster
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GENERATOR_DIR="${SCRIPT_DIR}/../generator"
-OUTPUT_DIR="${SCRIPT_DIR}/../policies/threat-intel"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+QCR="${PROJECT_DIR}/eventgen/bin/qcr"
+OUTPUT_DIR="${PROJECT_DIR}/policies/threat-intel"
+
+# Build qcr if not present
+if [ ! -x "${QCR}" ]; then
+    echo "Building qcr binary..."
+    (cd "${PROJECT_DIR}/eventgen" && make build)
+fi
+
+# Check for credentials
+if [ -z "${QUALYS_ACCESS_TOKEN}" ] && { [ -z "${QUALYS_USERNAME}" ] || [ -z "${QUALYS_PASSWORD}" ]; }; then
+    echo "Error: Qualys credentials required."
+    echo "Set QUALYS_USERNAME and QUALYS_PASSWORD, or QUALYS_ACCESS_TOKEN"
+    echo "Also set QUALYS_POD (e.g., us1, us2, eu1)"
+    exit 1
+fi
 
 echo "=========================================="
 echo "Threat Intelligence Feed Update"
 echo "=========================================="
 echo ""
 
-# Setup Python environment
-if [ ! -d "${GENERATOR_DIR}/venv" ]; then
-    echo "Setting up Python virtual environment..."
-    python3 -m venv "${GENERATOR_DIR}/venv"
-fi
-
-source "${GENERATOR_DIR}/venv/bin/activate"
-pip install -q requests pyyaml
-
-# Run threat intel updater
-echo "Fetching threat intelligence feeds..."
-cd "${GENERATOR_DIR}"
-
-# Pass API keys if available
-ARGS="--output ${OUTPUT_DIR}"
-
-if [ -n "$ABUSEIPDB_API_KEY" ]; then
-    ARGS="${ARGS} --abuseipdb-key ${ABUSEIPDB_API_KEY}"
-fi
-
-if [ -n "$OTX_API_KEY" ]; then
-    ARGS="${ARGS} --otx-key ${OTX_API_KEY}"
-fi
-
-python threat_intel.py ${ARGS}
-
+# Fetch CDR findings
+echo "Fetching CDR findings from Qualys..."
+"${QCR}" cdr fetch -hours 24 -limit 100
 echo ""
+
+# Generate policies from findings
+echo "Generating TracingPolicies from CDR findings..."
+mkdir -p "${OUTPUT_DIR}"
+"${QCR}" cdr policy -hours 24 -action Post -output "${OUTPUT_DIR}"
+echo ""
+
 echo "Policies generated in: ${OUTPUT_DIR}"
 
 # Optionally apply to cluster
