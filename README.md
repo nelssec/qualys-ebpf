@@ -351,24 +351,18 @@ kubectl create configmap qualys-config \
   --from-literal=QUALYS_PLATFORM=US2 \
   -n qualys-system
 
-# 2. Deploy the operator
-kubectl apply -f operator/deploy/cronjob.yaml
+# 2. Deploy the CronJob
+kubectl apply -f eventgen/deploy/cronjob.yaml
 
 # 3. Trigger manually to test
 kubectl create job --from=cronjob/qualys-policy-generator test-run -n qualys-system
 ```
 
-See [operator/README.md](operator/README.md) for full documentation.
-
 ### Option 2: CLI (One-time or Local)
 
 ```bash
-cd operator
-go run ./cmd/main.go \
-  --platform US2 \
-  --hours 24 \
-  --action Sigkill \
-  --output ./policies
+cd eventgen
+qcr cdr policy --hours 24 --action Sigkill --output ./policies
 ```
 
 ## TracingPolicy Structure
@@ -503,50 +497,29 @@ kubectl apply -f policies/network/threat-intel-cronjob.yaml
 
 ```
 qualys-ebpf/
-├── operator/                      # Go-based policy operator
-│   ├── cmd/main.go               # CLI and controller entrypoint
+├── eventgen/                      # Go CLI tool (qcr) - unified binary
+│   ├── cmd/main.go               # CLI entrypoint
 │   ├── pkg/
-│   │   ├── admission/            # Kubernetes admission controller
-│   │   │   └── controller.go     # ValidatingWebhook for pod security
-│   │   ├── ai/                   # AI-powered anomaly detection
-│   │   │   └── detector.go       # Isolation forest, clustering, Z-score
-│   │   ├── behavior/             # Behavioral profiling
-│   │   │   └── profiler.go       # Learning mode, anomaly scoring
-│   │   ├── cdr/                  # Qualys CDR API client
-│   │   │   └── client.go         # Event fetching, authentication
-│   │   ├── correlation/          # Attack chain correlation
-│   │   │   └── engine.go         # 7 attack patterns, MITRE mapping
-│   │   ├── dns/                  # DNS monitoring
-│   │   │   └── monitor.go        # DGA detection, threat feeds
-│   │   ├── drift/                # Container drift detection
-│   │   │   └── detector.go       # Executable tracking, baselines
-│   │   ├── federation/           # Multi-cluster federation
-│   │   │   ├── manager.go        # Hub-spoke, policy sync
-│   │   │   └── types.go          # CRD type definitions
-│   │   ├── network/              # Network threat blocking
-│   │   │   └── blocker.go        # IOC extraction, policy generation
-│   │   ├── outputs/              # SIEM/SOAR integrations
-│   │   │   └── integrations.go   # Slack, PagerDuty, Splunk, etc.
+│   │   ├── ai/                   # AI anomaly detection (Isolation Forest, K-means)
+│   │   ├── analytics/            # Vulnerability analytics
+│   │   ├── behavior/             # Behavioral profiling with learning
+│   │   ├── correlation/          # Attack chain correlation (7 MITRE patterns)
+│   │   ├── dns/                  # DNS monitoring, DGA detection
+│   │   ├── drift/                # Drift detection and lockdown policies
+│   │   ├── events/               # Security event catalog for testing
+│   │   ├── federation/           # Multi-cluster hub-spoke federation
+│   │   ├── network/              # Network IOC extraction and blocking
+│   │   ├── outputs/              # SIEM integrations (Slack, Splunk, etc.)
 │   │   ├── policy/               # TracingPolicy generator
-│   │   │   └── generator.go      # Policy generation logic
+│   │   ├── qualys/               # Qualys CDR/CS API client
 │   │   ├── reputation/           # IP reputation checking
-│   │   │   └── checker.go        # Threat feed aggregation
-│   │   ├── response/             # Response actions
-│   │   │   └── actions.go        # Kill, stop, pause, quarantine
+│   │   ├── response/             # Response actions (kill, stop, quarantine)
+│   │   ├── vuln/                 # Vulnerability correlation
 │   │   └── webhook/              # Event webhook server
-│   │       └── server_v2.go      # Real-time event processing
-│   ├── config/
-│   │   ├── crds/                 # Custom Resource Definitions
-│   │   │   ├── federation.qualys.com_federatedclusters.yaml
-│   │   │   ├── federation.qualys.com_federatedtracingpolicies.yaml
-│   │   │   └── federation.qualys.com_federatednetworkpolicies.yaml
-│   │   └── samples/              # Example configurations
-│   │       └── federation-example.yaml
 │   ├── deploy/
-│   │   ├── cronjob.yaml         # Kubernetes CronJob deployment
-│   │   └── secret.yaml.example  # Credentials template
-│   ├── Dockerfile
-│   └── README.md
+│   │   └── cronjob.yaml         # Kubernetes CronJob deployment
+│   ├── Dockerfile               # Multi-stage container build
+│   └── Makefile
 ├── policies/
 │   ├── crs-detections/          # 49 CRS detection rules
 │   │   ├── generated/           # Auto-generated YAML policies
@@ -570,15 +543,6 @@ qualys-ebpf/
 │       ├── stable/              # Production-ready policies
 │       ├── incubating/          # Robust but may need tuning
 │       └── sandbox/             # Experimental policies
-├── eventgen/                    # Go CLI tool (qcr)
-│   ├── cmd/main.go             # CLI entrypoint
-│   ├── pkg/
-│   │   ├── qualys/             # Qualys API client
-│   │   ├── drift/              # Drift detection policies
-│   │   ├── policy/             # TracingPolicy generator
-│   │   └── analytics/          # Vulnerability analytics
-│   ├── Dockerfile              # Multi-stage container build
-│   └── Makefile
 ├── scripts/
 │   ├── deploy-detection.sh
 │   ├── deploy-prevention.sh

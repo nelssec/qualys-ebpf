@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"qualys-policy-operator/pkg/reputation"
+	"github.com/qualys/eventgen/pkg/reputation"
 	"sigs.k8s.io/yaml"
 )
 

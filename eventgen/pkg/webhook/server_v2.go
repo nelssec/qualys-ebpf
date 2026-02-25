@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"qualys-policy-operator/pkg/drift"
-	"qualys-policy-operator/pkg/outputs"
-	"qualys-policy-operator/pkg/reputation"
-	"qualys-policy-operator/pkg/response"
+	"github.com/qualys/eventgen/pkg/drift"
+	"github.com/qualys/eventgen/pkg/outputs"
+	"github.com/qualys/eventgen/pkg/reputation"
+	"github.com/qualys/eventgen/pkg/response"
 	"sigs.k8s.io/yaml"
 )
 

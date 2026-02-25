@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"qualys-policy-operator/pkg/cdr"
+	"github.com/qualys/eventgen/pkg/qualys"
 )
 
 // ThreatIndicator represents an extracted network IOC.
@@ -40,58 +40,58 @@ func NewNetworkBlocklist() *NetworkBlocklist {
 }
 
 // ExtractFromEvents parses CDR events and extracts network IOCs.
-func (b *NetworkBlocklist) ExtractFromEvents(events []cdr.Event) {
+func (b *NetworkBlocklist) ExtractFromEvents(events []qualys.CDREvent) {
 	for _, event := range events {
 		b.extractFromEvent(event)
 	}
 }
 
-func (b *NetworkBlocklist) extractFromEvent(event cdr.Event) {
+func (b *NetworkBlocklist) extractFromEvent(event qualys.CDREvent) {
 	now := time.Now()
-	category := event.ThreatCategory
+	category := event.EventType
 	severity := mapSeverity(event.Severity)
 
 	// Extract destination IP
-	if destIP := event.Raw["destinationIp"]; destIP != nil {
+	if destIP := event.RawData["destinationIp"]; destIP != nil {
 		if ip, ok := destIP.(string); ok && isValidIP(ip) && !isPrivateIP(ip) {
-			b.addIP(ip, severity, category, event.UUID, now)
+			b.addIP(ip, severity, category, event.EventID, now)
 		}
 	}
 
 	// Extract triggered resource (often contains IP)
-	if triggered := event.Raw["triggeredResource"]; triggered != nil {
+	if triggered := event.RawData["triggeredResource"]; triggered != nil {
 		if val, ok := triggered.(string); ok {
 			if isValidIP(val) && !isPrivateIP(val) {
-				b.addIP(val, severity, category, event.UUID, now)
+				b.addIP(val, severity, category, event.EventID, now)
 			}
 		}
 	}
 
 	// Extract affected resource
-	if affected := event.Raw["affectedResource"]; affected != nil {
+	if affected := event.RawData["affectedResource"]; affected != nil {
 		if val, ok := affected.(string); ok {
 			if isValidIP(val) && !isPrivateIP(val) {
-				b.addIP(val, severity, category, event.UUID, now)
+				b.addIP(val, severity, category, event.EventID, now)
 			}
 		}
 	}
 
 	// Extract destination port for suspicious connections
-	if destPort := event.Raw["destinationPort"]; destPort != nil {
+	if destPort := event.RawData["destinationPort"]; destPort != nil {
 		if port, ok := destPort.(float64); ok {
 			portStr := fmt.Sprintf("%d", int(port))
 			if isSuspiciousPort(int(port)) {
-				b.addPort(portStr, severity, category, event.UUID, now)
+				b.addPort(portStr, severity, category, event.EventID, now)
 			}
 		}
 	}
 
 	// Extract domain from network info
-	if netInfo := event.Raw["networkInformation"]; netInfo != nil {
+	if netInfo := event.RawData["networkInformation"]; netInfo != nil {
 		if info, ok := netInfo.(map[string]interface{}); ok {
 			if domain := info["domain"]; domain != nil {
 				if d, ok := domain.(string); ok && isValidDomain(d) {
-					b.addDomain(d, severity, category, event.UUID, now)
+					b.addDomain(d, severity, category, event.EventID, now)
 				}
 			}
 		}
