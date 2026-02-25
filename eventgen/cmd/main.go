@@ -744,9 +744,12 @@ func outputSBOM(s *sbom.CBOM, format, output string) {
 
 func cbomCmd(args []string) {
 	fs := flag.NewFlagSet("cbom", flag.ExitOnError)
-	certFile := fs.String("file", "", "PEM certificate file to scan")
-	host := fs.String("host", "", "Host to scan for certificates")
-	port := fs.Int("port", 443, "Port for TLS connection")
+	container := fs.String("container", "", "Container name/ID to scan")
+	pod := fs.String("pod", "", "Kubernetes pod name to scan")
+	namespace := fs.String("namespace", "", "Kubernetes namespace")
+	containerName := fs.String("c", "", "Container name within pod (for multi-container pods)")
+	runtime := fs.String("runtime", "", "Container runtime: kubectl, docker, crictl, nerdctl (auto-detected)")
+	certFile := fs.String("file", "", "PEM certificate file to scan (local)")
 	expireDays := fs.Int("expire-days", 30, "Days threshold for expiring soon warning")
 	minKeySize := fs.Int("min-key-size", 2048, "Minimum RSA key size")
 	format := fs.String("format", "text", "Output format: text, json")
@@ -756,11 +759,26 @@ func cbomCmd(args []string) {
 	scanner := cbom.NewScanner()
 	scanner.SetExpirySoonDays(*expireDays)
 	scanner.SetMinKeySize(*minKeySize)
+	if *runtime != "" {
+		scanner.SetRuntime(*runtime)
+	}
 
 	var result *cbom.CBOM
 	var err error
 
-	if *certFile != "" {
+	if *container != "" {
+		result, err = scanner.ScanContainer(*container, *namespace)
+		if err != nil {
+			fmt.Printf("Error scanning container: %v\n", err)
+			return
+		}
+	} else if *pod != "" {
+		result, err = scanner.ScanPod(*pod, *namespace, *containerName)
+		if err != nil {
+			fmt.Printf("Error scanning pod: %v\n", err)
+			return
+		}
+	} else if *certFile != "" {
 		data, err := os.ReadFile(*certFile)
 		if err != nil {
 			fmt.Printf("Error reading file: %v\n", err)
@@ -771,15 +789,13 @@ func cbomCmd(args []string) {
 			fmt.Printf("Error parsing certificates: %v\n", err)
 			return
 		}
-	} else if *host != "" {
-		result, err = scanner.ScanEndpoint(*host, *port)
-		if err != nil {
-			fmt.Printf("Error scanning endpoint: %v\n", err)
-			return
-		}
 	} else {
-		fmt.Println("Error: Specify --file or --host")
-		fs.Usage()
+		fmt.Println("Error: Specify --container, --pod, or --file")
+		fmt.Println("\nExamples:")
+		fmt.Println("  qcr cbom --container nginx-abc123")
+		fmt.Println("  qcr cbom --pod my-pod -n default")
+		fmt.Println("  qcr cbom --pod my-pod -n default -c sidecar")
+		fmt.Println("  qcr cbom --file /path/to/cert.pem")
 		return
 	}
 
