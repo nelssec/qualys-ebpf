@@ -13,11 +13,12 @@ import (
 
 	"github.com/qualys/eventgen/pkg/ai"
 	"github.com/qualys/eventgen/pkg/analytics"
-	"github.com/qualys/eventgen/pkg/sbom"
+	"github.com/qualys/eventgen/pkg/cbom"
 	"github.com/qualys/eventgen/pkg/drift"
 	"github.com/qualys/eventgen/pkg/events"
 	"github.com/qualys/eventgen/pkg/policy"
 	"github.com/qualys/eventgen/pkg/qualys"
+	"github.com/qualys/eventgen/pkg/sbom"
 	"github.com/qualys/eventgen/pkg/vuln"
 	"gopkg.in/yaml.v3"
 )
@@ -46,6 +47,8 @@ func main() {
 		aiCmd(os.Args[2:])
 	case "sbom":
 		sbomCmd(os.Args[2:])
+	case "cbom":
+		cbomCmd(os.Args[2:])
 	case "version":
 		fmt.Printf("Qualys CRS CLI v%s (%s)\n", version, buildTime)
 	case "help", "-h", "--help":
@@ -68,6 +71,7 @@ Commands:
   vulns       Vulnerability correlation and analytics
   drift       Container drift management policies
   sbom        Software BOM generation (CycloneDX/SPDX)
+  cbom        Certificate BOM - scan and report certificates
   ai          AI-powered vulnerability analysis
   version     Show version
   help        Show this help
@@ -735,5 +739,62 @@ func outputSBOM(s *sbom.CBOM, format, output string) {
 		fmt.Printf("Written to %s\n", output)
 	} else {
 		fmt.Println(string(data))
+	}
+}
+
+func cbomCmd(args []string) {
+	fs := flag.NewFlagSet("cbom", flag.ExitOnError)
+	certFile := fs.String("file", "", "PEM certificate file to scan")
+	host := fs.String("host", "", "Host to scan for certificates")
+	port := fs.Int("port", 443, "Port for TLS connection")
+	expireDays := fs.Int("expire-days", 30, "Days threshold for expiring soon warning")
+	minKeySize := fs.Int("min-key-size", 2048, "Minimum RSA key size")
+	format := fs.String("format", "text", "Output format: text, json")
+	output := fs.String("output", "", "Output file (default: stdout)")
+	fs.Parse(args)
+
+	scanner := cbom.NewScanner()
+	scanner.SetExpirySoonDays(*expireDays)
+	scanner.SetMinKeySize(*minKeySize)
+
+	var result *cbom.CBOM
+	var err error
+
+	if *certFile != "" {
+		data, err := os.ReadFile(*certFile)
+		if err != nil {
+			fmt.Printf("Error reading file: %v\n", err)
+			return
+		}
+		result, err = scanner.ParsePEM(data, *certFile)
+		if err != nil {
+			fmt.Printf("Error parsing certificates: %v\n", err)
+			return
+		}
+	} else if *host != "" {
+		result, err = scanner.ScanEndpoint(*host, *port)
+		if err != nil {
+			fmt.Printf("Error scanning endpoint: %v\n", err)
+			return
+		}
+	} else {
+		fmt.Println("Error: Specify --file or --host")
+		fs.Usage()
+		return
+	}
+
+	var outputData string
+	if *format == "json" {
+		data, _ := result.ToJSON()
+		outputData = string(data)
+	} else {
+		outputData = result.PrintReport()
+	}
+
+	if *output != "" {
+		os.WriteFile(*output, []byte(outputData), 0644)
+		fmt.Printf("Written to %s\n", *output)
+	} else {
+		fmt.Println(outputData)
 	}
 }
