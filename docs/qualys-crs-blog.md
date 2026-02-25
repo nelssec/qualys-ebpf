@@ -292,6 +292,50 @@ qcr drift lockdown --action Sigkill --namespace production --output ./lockdown
 # - container-tools-block.yaml      (block docker/kubectl)
 ```
 
+### Software BOM (SBOM)
+
+Generate Software Bill of Materials in CycloneDX or SPDX format for compliance and vulnerability tracking:
+
+```bash
+# Generate SBOM for a specific image
+qcr sbom --image sha256:abc123 --format cyclonedx -o sbom.json
+
+# Generate SBOMs for all running containers
+qcr sbom --running --format spdx -o sboms/
+
+# Output formats: cyclonedx (default), spdx
+```
+
+### Certificate BOM (CBOM)
+
+Scan containers for TLS certificates and identify security issues:
+
+```bash
+# Scan a container by name or ID
+qcr cbom --container nginx-abc123
+
+# Scan a Kubernetes pod
+qcr cbom --pod my-pod -n default
+
+# Scan specific container in multi-container pod
+qcr cbom --pod my-pod -n default -c sidecar
+
+# Custom expiry threshold
+qcr cbom --container abc --expire-days 60 --min-key-size 4096
+
+# JSON output for automation
+qcr cbom --pod my-pod -n prod --format json -o certs.json
+```
+
+CBOM automatically detects:
+- **Expired certificates** - Certificates past their validity period
+- **Expiring soon** - Certificates within configurable threshold (default 30 days)
+- **Weak algorithms** - MD5, SHA1 signature algorithms
+- **Short key lengths** - RSA keys below minimum size (default 2048 bits)
+- **Self-signed non-CA** - Self-signed certificates that aren't CA certificates
+
+The scanner supports multiple container runtimes (kubectl, docker, crictl, nerdctl) and automatically detects the available runtime.
+
 ### Quick Install (Helm)
 
 ```bash

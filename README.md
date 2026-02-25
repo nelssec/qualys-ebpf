@@ -188,6 +188,46 @@ qcr vulns export --format json --output ./vuln-data.json
 qcr ai analyze --hours 24
 ```
 
+### Software BOM (SBOM)
+
+Generate Software Bill of Materials in CycloneDX or SPDX format:
+
+```bash
+# Generate SBOM for an image
+qcr sbom --image <image-id> --format cyclonedx
+
+# Generate SBOMs for all running containers
+qcr sbom --running --format spdx -o sboms/
+```
+
+### Certificate BOM (CBOM)
+
+Scan containers for certificates, detect expiring/weak certs:
+
+```bash
+# Scan a container by name/ID
+qcr cbom --container nginx-abc123
+
+# Scan a Kubernetes pod
+qcr cbom --pod my-pod -n default
+
+# Scan specific container in multi-container pod
+qcr cbom --pod my-pod -n default -c sidecar
+
+# Custom thresholds
+qcr cbom --container abc --expire-days 60 --min-key-size 4096
+
+# JSON output
+qcr cbom --pod my-pod -n prod --format json -o certs.json
+```
+
+CBOM detects:
+- Expired certificates
+- Certificates expiring soon (configurable threshold)
+- Weak signature algorithms (MD5, SHA1)
+- Short RSA key lengths (<2048 bits)
+- Self-signed non-CA certificates
+
 ## Prerequisites
 
 - Kubernetes cluster with Qualys CRS sensor installed
