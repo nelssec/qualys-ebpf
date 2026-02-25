@@ -92,7 +92,7 @@ This repository provides:
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
-## QCR CLI Tool (v1.0.3)
+## QCR CLI Tool (v2.0.1)
 
 A single Go binary for CDR integration, policy generation, and drift enforcement.
 

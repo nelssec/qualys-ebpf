@@ -245,7 +245,7 @@ spec:
 
 ## Getting Started
 
-### QCR CLI (v1.0.3)
+### QCR CLI (v2.0.1)
 
 The `qcr` binary provides a single tool for CDR integration, policy generation, and drift enforcement:
 
